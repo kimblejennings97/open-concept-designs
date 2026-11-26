@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Concept Designs</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <span class="brand">Open Concept Designs</span>
+        <input id="design-name" class="name-input" type="text" maxlength="80" aria-label="Design name" spellcheck="false" />
+        <span id="save-state" class="save-state"></span>
+        <span class="spacer"></span>
+        <button id="btn-new" type="button">New</button>
+        <button id="btn-open" type="button">Open…</button>
+      </header>
+
+      <div class="workspace">
+        <aside class="sidebar">
+          <section>
+            <h2>Tools</h2>
+            <div id="tools" class="tool-list"></div>
+          </section>
+          <section id="options" class="options"></section>
+          <section>
+            <h2>Edit</h2>
+            <div class="action-grid">
+              <button id="btn-undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
+              <button id="btn-redo" type="button" title="Redo (Ctrl+Y)">Redo</button>
+              <button id="btn-enclose" type="button" class="wide" title="Add walls around the whole footprint">Wall the footprint</button>
+              <button id="btn-fit" type="button" class="wide" title="Fit lot to screen (Home)">Fit view</button>
+            </div>
+          </section>
+          <section class="stats">
+            <h2>Building</h2>
+            <dl id="stats"></dl>
+          </section>
+        </aside>
+
+        <main class="canvas-wrap">
+          <canvas id="blueprint"></canvas>
+        </main>
+      </div>
+
+      <footer class="statusbar">
+        <span id="status-hint"></span>
+        <span class="spacer"></span>
+        <span id="status-pos"></span>
+      </footer>
+    </div>
+
+    <dialog id="dlg-new">
+      <form method="dialog" id="form-new">
+        <h2>New design</h2>
+        <label>Name <input name="name" type="text" value="Untitled design" maxlength="80" required /></label>
+        <div class="row">
+          <label>Lot width (m) <input name="w" type="number" min="5" max="100" step="0.5" value="20" required /></label>
+          <label>Lot depth (m) <input name="h" type="number" min="5" max="100" step="0.5" value="15" required /></label>
+        </div>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate type="submit">Cancel</button>
+          <button value="ok" type="submit" class="primary">Create</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-open">
+      <h2>Your designs</h2>
+      <ul id="design-list" class="design-list"></ul>
+      <div class="dialog-actions">
+        <button id="btn-open-close" type="button">Close</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
