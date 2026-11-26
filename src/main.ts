@@ -14,6 +14,7 @@ import { type CareerKind, type CareerSave, type Payout, newCareer, recordJob } f
 import { renderOffice } from './ui/career';
 import { isMuted, play, setMuted } from './ui/sound';
 import { nextTip } from './ui/coach';
+import { decodeDesign, shareUrl, sharedCode } from './storage/share';
 import { deleteGame, loadGame, saveGame } from './storage/db';
 import {
   type BuildingType,
@@ -697,6 +698,20 @@ $('btn-export').onclick = () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+$('btn-share').onclick = async () => {
+  try {
+    const url = await shareUrl(serialize(editor.design));
+    if (navigator.share) {
+      await navigator.share({ title: editor.design.name, url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      setSaveState('Share link copied');
+    }
+  } catch (err) {
+    if ((err as Error)?.name !== 'AbortError') alert('Couldn’t create a share link in this browser.');
+  }
+};
+
 const fileInput = $<HTMLInputElement>('file-import');
 $('btn-import').onclick = () => fileInput.click();
 fileInput.onchange = async () => {
@@ -1058,6 +1073,20 @@ window.addEventListener('blur', () => {
 // ---------------------------------------------------------------------------
 
 async function loadInitialDesign(): Promise<Design> {
+  // A shared link opens a copy of the design in it.
+  const code = sharedCode();
+  if (code) {
+    history.replaceState(null, '', location.pathname + location.search);
+    try {
+      const d = deserialize(await decodeDesign(code));
+      d.id = newId();
+      d.mode = 'free';
+      d.name = `${d.name} (shared)`;
+      return d;
+    } catch (err) {
+      console.warn('Bad share link', err);
+    }
+  }
   const id = getLastDesignId();
   if (id) {
     try {
