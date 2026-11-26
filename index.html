@@ -30,6 +30,10 @@
             </div>
           </section>
           <section id="options" class="options"></section>
+          <section class="brief-section" id="brief-section" hidden>
+            <h2>Client brief</h2>
+            <div id="brief"></div>
+          </section>
           <section class="sim-section">
             <h2>Simulate</h2>
             <div id="sim"></div>
@@ -71,6 +75,7 @@
             <option value="blank">Empty lot</option>
             <option value="house">Sample: two-bedroom house</option>
             <option value="store">Sample: corner store</option>
+            <optgroup label="Practice a client brief" id="brief-options"></optgroup>
           </select>
         </label>
         <label>Name <input name="name" type="text" value="Untitled design" maxlength="80" required /></label>
@@ -83,6 +88,10 @@
           <button value="ok" type="submit" class="primary">Create</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="dlg-report" class="report">
+      <div id="report"></div>
     </dialog>
 
     <dialog id="dlg-open">

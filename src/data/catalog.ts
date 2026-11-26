@@ -6,6 +6,7 @@ import materials from './materials.json';
 import roomTypes from './roomTypes.json';
 import costs from './costs.json';
 import catalog from './catalog.json';
+import briefs from './briefs.json';
 
 export type BuildingType = 'house' | 'store';
 
@@ -51,6 +52,48 @@ export interface CatalogItem {
   tier: number;
   color: string;
 }
+
+export type Requirement =
+  | { kind: 'room'; roomType: string; count: number; minAreaM2?: number }
+  | { kind: 'item'; item: string; count: number }
+  | { kind: 'footprint'; minM2?: number; maxM2?: number };
+
+export interface ScoreWeights {
+  flow: number;
+  aesthetics: number;
+  budget: number;
+  brief: number;
+}
+
+export interface Brief {
+  id: string;
+  tier: number;
+  building: BuildingType;
+  client: string;
+  clientRole: string;
+  title: string;
+  summary: string;
+  /** Lot size in meters. */
+  lot: { w: number; h: number };
+  budget: number;
+  fee: number;
+  theme: string;
+  weights: ScoreWeights;
+  requirements: Requirement[];
+}
+
+export const BRIEFS: readonly Brief[] = briefs.briefs as Brief[];
+const briefById = new Map(BRIEFS.map((b) => [b.id, b]));
+export const getBrief = (id: string | undefined) => (id ? briefById.get(id) : undefined);
+
+export const THEME_NAMES: Record<string, string> = {
+  cozy: 'Cozy',
+  modern: 'Modern',
+  rustic: 'Rustic',
+  classic: 'Classic',
+  industrial: 'Industrial',
+  luxury: 'Luxury',
+};
 
 export const CATALOG: readonly CatalogItem[] = catalog.items as CatalogItem[];
 const itemById = new Map(CATALOG.map((i) => [i.id, i]));

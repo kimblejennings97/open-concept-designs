@@ -1,0 +1,100 @@
+{
+  "_comment": "Client briefs. Lot sizes in meters. Weights say how much each score counts (they sum to 1). Requirements: room (count of a room type, optional min area), item (count of a catalog item), footprint (area range in m²).",
+  "briefs": [
+    {
+      "id": "starter-home",
+      "tier": 1,
+      "building": "house",
+      "client": "Maya & Theo",
+      "clientRole": "Young couple",
+      "title": "Starter home",
+      "summary": "Our first place! Two bedrooms so there's room for guests (or a nursery someday), a cozy living room, and a kitchen we can actually cook in. We're on a tight budget.",
+      "lot": { "w": 20, "h": 15 },
+      "budget": 160000,
+      "fee": 12000,
+      "theme": "cozy",
+      "weights": { "flow": 0.3, "aesthetics": 0.25, "budget": 0.2, "brief": 0.25 },
+      "requirements": [
+        { "kind": "room", "roomType": "bedroom", "count": 2, "minAreaM2": 9 },
+        { "kind": "room", "roomType": "bathroom", "count": 1 },
+        { "kind": "room", "roomType": "kitchen", "count": 1 },
+        { "kind": "room", "roomType": "living", "count": 1, "minAreaM2": 14 },
+        { "kind": "item", "item": "bed-double", "count": 1 },
+        { "kind": "item", "item": "toilet", "count": 1 },
+        { "kind": "item", "item": "fridge", "count": 1 },
+        { "kind": "item", "item": "sofa", "count": 1 },
+        { "kind": "footprint", "minM2": 60, "maxM2": 110 }
+      ]
+    },
+    {
+      "id": "corner-store",
+      "tier": 1,
+      "building": "store",
+      "client": "Sam Patel",
+      "clientRole": "Corner-store owner",
+      "title": "Corner convenience store",
+      "summary": "I want people in and out fast: easy to find the drinks, a quick line at the register, and some snacks by the till. Somewhere to keep stock in the back, and a restroom for staff.",
+      "lot": { "w": 20, "h": 15 },
+      "budget": 200000,
+      "fee": 18000,
+      "theme": "modern",
+      "weights": { "flow": 0.4, "aesthetics": 0.15, "budget": 0.2, "brief": 0.25 },
+      "requirements": [
+        { "kind": "room", "roomType": "sales-floor", "count": 1, "minAreaM2": 50 },
+        { "kind": "room", "roomType": "stockroom", "count": 1 },
+        { "kind": "room", "roomType": "restroom", "count": 1 },
+        { "kind": "item", "item": "checkout-counter", "count": 1 },
+        { "kind": "item", "item": "shelf-aisle", "count": 2 },
+        { "kind": "item", "item": "fridge-case", "count": 1 },
+        { "kind": "item", "item": "impulse-rack", "count": 1 },
+        { "kind": "footprint", "minM2": 90, "maxM2": 160 }
+      ]
+    },
+    {
+      "id": "retiree-cottage",
+      "tier": 1,
+      "building": "house",
+      "client": "Ruth Okafor",
+      "clientRole": "Retired teacher",
+      "title": "Garden cottage",
+      "summary": "Just me and a great many books. One good bedroom, a bright living room for reading, and a kitchen. Warm wood, nothing flashy.",
+      "lot": { "w": 16, "h": 12 },
+      "budget": 120000,
+      "fee": 9000,
+      "theme": "rustic",
+      "weights": { "flow": 0.2, "aesthetics": 0.35, "budget": 0.2, "brief": 0.25 },
+      "requirements": [
+        { "kind": "room", "roomType": "bedroom", "count": 1, "minAreaM2": 10 },
+        { "kind": "room", "roomType": "bathroom", "count": 1 },
+        { "kind": "room", "roomType": "kitchen", "count": 1 },
+        { "kind": "room", "roomType": "living", "count": 1, "minAreaM2": 12 },
+        { "kind": "item", "item": "bookshelf", "count": 2 },
+        { "kind": "item", "item": "armchair", "count": 1 },
+        { "kind": "footprint", "minM2": 45, "maxM2": 80 }
+      ]
+    },
+    {
+      "id": "night-mart",
+      "tier": 1,
+      "building": "store",
+      "client": "Dee Romero",
+      "clientRole": "Gas-station franchisee",
+      "title": "Late-night mini mart",
+      "summary": "Open all night, so it needs to feel safe and simple. Lots of cold drinks, a hot food case by the register, and two aisles max. Industrial look is fine.",
+      "lot": { "w": 18, "h": 12 },
+      "budget": 190000,
+      "fee": 15000,
+      "theme": "industrial",
+      "weights": { "flow": 0.4, "aesthetics": 0.15, "budget": 0.25, "brief": 0.2 },
+      "requirements": [
+        { "kind": "room", "roomType": "sales-floor", "count": 1, "minAreaM2": 45 },
+        { "kind": "room", "roomType": "restroom", "count": 1 },
+        { "kind": "item", "item": "checkout-counter", "count": 1 },
+        { "kind": "item", "item": "fridge-case", "count": 2 },
+        { "kind": "item", "item": "hot-food-case", "count": 1 },
+        { "kind": "item", "item": "shelf-aisle", "count": 1 },
+        { "kind": "footprint", "minM2": 70, "maxM2": 130 }
+      ]
+    }
+  ]
+}

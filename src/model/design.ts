@@ -67,6 +67,8 @@ export interface Design {
   /** Room type id per anchor cell (see rooms.ts). */
   roomTypes: Map<string, string>;
   furniture: Furniture[];
+  /** Client brief this design answers, if it is a job. */
+  briefId?: string;
 }
 
 /** JSON form, used for saving, undo snapshots, and (later) export/import. */
@@ -83,6 +85,7 @@ export interface DesignFile {
   wallFinishes?: Record<string, string>;
   roomTypes?: Record<string, string>;
   furniture?: Furniture[];
+  briefId?: string;
 }
 
 export function newId(): string {
@@ -128,6 +131,7 @@ export function serialize(d: Design): DesignFile {
     wallFinishes: sortedRecord(d.wallFinishes),
     roomTypes: sortedRecord(d.roomTypes),
     furniture: d.furniture.map((f) => ({ ...f })),
+    ...(d.briefId ? { briefId: d.briefId } : {}),
   };
 }
 
@@ -150,6 +154,7 @@ export function deserialize(raw: unknown): Design {
     wallFinishes: stringMap(f.wallFinishes),
     roomTypes: stringMap(f.roomTypes),
     furniture: Array.isArray(f.furniture) ? f.furniture.map((x) => ({ ...x })) : [],
+    briefId: typeof f.briefId === 'string' ? f.briefId : undefined,
   };
   normalize(d);
   return d;

@@ -6,6 +6,10 @@ import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWall
 import { computeCost, fmtMoney } from './model/cost';
 import { type SampleId, sampleDesign } from './model/samples';
 import { type SimBuilding, inferBuilding, simulateFlow } from './sim/scenarios';
+import { BRIEFS, type Brief, getBrief } from './data/catalog';
+import { evaluateJob } from './game/evaluate';
+import { scoreAesthetics } from './model/scoring';
+import { renderBriefPanel, renderReport } from './ui/brief';
 import {
   type BuildingType,
   CATALOG,
@@ -44,6 +48,10 @@ const el = {
   stats: $('stats'),
   cost: $('cost'),
   sim: $('sim'),
+  briefSection: $('brief-section'),
+  brief: $('brief'),
+  dlgReport: $<HTMLDialogElement>('dlg-report'),
+  report: $('report'),
   hint: $('status-hint'),
   pos: $('status-pos'),
   dlgNew: $<HTMLDialogElement>('dlg-new'),
@@ -398,6 +406,7 @@ function renderStats(): void {
     ['Interior walls', `${s.interiorWallM.toFixed(1)} m`],
     ['Doors', String(s.doors)],
     ['Windows', String(s.windows)],
+    ['Looks', `${scoreAesthetics(d, editor.getRooms(), getBrief(d.briefId)?.theme).score}/100`],
   ]);
 
   const c = computeCost(d, rooms);
@@ -414,6 +423,45 @@ function renderStats(): void {
   }
   rows.push(['Total', fmtMoney(c.total), 'total']);
   dl(el.cost, rows);
+}
+
+// ---------------------------------------------------------------------------
+// Client brief
+// ---------------------------------------------------------------------------
+
+/** A blank design sized for a brief's lot. */
+function designForBrief(brief: Brief): Design {
+  const d = createDesign(brief.title, Math.round(brief.lot.w / CELL_M), Math.round(brief.lot.h / CELL_M));
+  d.briefId = brief.id;
+  return d;
+}
+
+function renderBrief(): void {
+  const brief = getBrief(editor.design.briefId);
+  el.briefSection.hidden = !brief;
+  if (brief) renderBriefPanel(el.brief, editor, brief, () => submitDesign(brief));
+}
+
+/** Overridable by career mode: what happens after the client sees the design. */
+let reportExtras: (brief: Brief, ev: ReturnType<typeof evaluateJob>) => { collect?: () => void; collectLabel?: string } = () => ({});
+
+function submitDesign(brief: Brief): void {
+  const ev = evaluateJob(editor.design, editor.getRooms(), brief);
+  const close = () => el.dlgReport.close();
+  renderReport(el.report, brief, ev, {
+    watch: () => {
+      close();
+      editor.showSim(ev.flow);
+    },
+    close,
+    ...reportExtras(brief, ev),
+  });
+  el.dlgReport.showModal();
+}
+
+{
+  const group = document.getElementById('brief-options');
+  for (const b of BRIEFS) group?.append(new Option(`${b.client}: ${b.title}`, `brief:${b.id}`));
 }
 
 // ---------------------------------------------------------------------------
@@ -559,7 +607,10 @@ function refreshUi(designChanged = false): void {
     lastOptionsKey = optionsKey;
     renderOptions();
   }
-  if (designChanged) renderStats();
+  if (designChanged) {
+    renderStats();
+    renderBrief();
+  }
   refreshSim();
   el.undo.disabled = !editor.history.canUndo;
   el.redo.disabled = !editor.history.canRedo;
@@ -575,6 +626,7 @@ async function switchTo(design: Design): Promise<void> {
   if (saveTimer !== undefined) await flushSave();
   editor.setDesign(design);
   renderStats();
+  renderBrief();
   setLastDesignId(design.id);
   setSaveState('');
 }
@@ -597,7 +649,10 @@ el.dlgNew.addEventListener('close', () => {
   const name = String(f.get('name') ?? '').trim() || 'Untitled design';
   const start = String(f.get('start') ?? 'blank');
   let d: Design;
-  if (start === 'house' || start === 'store') {
+  const practice = start.startsWith('brief:') ? getBrief(start.slice(6)) : undefined;
+  if (practice) {
+    d = designForBrief(practice);
+  } else if (start === 'house' || start === 'store') {
     d = sampleDesign(start as SampleId);
     if (name !== 'Untitled design') d.name = name;
   } else {
@@ -773,3 +828,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 refreshUi(true);
+renderBrief();
+export const hooks = {
+  setReportExtras(fn: typeof reportExtras) {
+    reportExtras = fn;
+  },
+};
