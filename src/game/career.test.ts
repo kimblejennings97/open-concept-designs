@@ -54,3 +54,17 @@ describe('career', () => {
     expect(p.save.tier).toBe(2);
   });
 });
+
+describe('sandbox career', () => {
+  it('starts at the top tier with a rotating stream of every client and no objectives', () => {
+    let save = newCareer('Big Firm', 'sandbox');
+    expect(save.id).toBe('sandbox');
+    expect(save.tier).toBe(5);
+    const first = offers(save).map((b) => b.id);
+    expect(first.length).toBeGreaterThanOrEqual(3);
+    expect(objectiveStatus(save)).toEqual([]);
+    save = recordJob(save, job(first[0], 2)).save;
+    expect(offers(save).map((b) => b.id)).not.toEqual(first);
+    expect(canPromote(save)).toBe(false);
+  });
+});

@@ -237,3 +237,22 @@ describe('3D view', () => {
     expect(view.hidden).toBe(true);
   });
 });
+
+describe('sandbox career', () => {
+  it('has its own slot with everything unlocked', async () => {
+    clickButton('Career');
+    await tick(30);
+    clickButton('Sandbox career');
+    await tick(30);
+    expect(document.getElementById('career')!.textContent).toMatch(/Start a sandbox firm/);
+    clickButton('Start career');
+    await tick(30);
+    const text = document.getElementById('career')!.textContent!;
+    expect(text).toMatch(/Tier 5/);
+    clickButton('Take job');
+    await tick(60);
+    clickButton('Furniture');
+    await tick();
+    expect(document.getElementById('options')!.textContent).toMatch(/Grand piano/);
+  });
+});

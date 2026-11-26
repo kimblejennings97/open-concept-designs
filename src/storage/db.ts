@@ -16,6 +16,7 @@ export interface DesignSummary {
   id: string;
   name: string;
   updatedAt: number;
+  mode: 'free' | 'career' | 'sandbox';
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -71,7 +72,7 @@ export async function loadDesign(id: string): Promise<DesignFile | undefined> {
 export async function listDesigns(): Promise<DesignSummary[]> {
   const recs = (await run('readonly', (s) => s.getAll())) as DesignRecord[];
   return recs
-    .map(({ id, name, updatedAt }) => ({ id, name, updatedAt }))
+    .map(({ id, name, updatedAt, data }) => ({ id, name, updatedAt, mode: data.mode ?? 'free' }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 

@@ -1,6 +1,6 @@
 /** The career "office": firm status, offer board, objectives and the next-tier teaser. */
 import { type Brief, THEME_NAMES } from '../data/catalog';
-import { type CareerSave, type Payout, objectiveStatus, offers, tierInfo, MAX_TIER } from '../game/career';
+import { type CareerKind, type CareerSave, type Payout, objectiveStatus, offers, tierInfo } from '../game/career';
 import { fmtMoney } from '../model/cost';
 import { starsText } from './brief';
 
@@ -19,6 +19,9 @@ function btn(text: string, onclick: () => void, cls = ''): HTMLButtonElement {
 }
 
 export interface OfficeActions {
+  /** Which save slot is shown. */
+  kind: CareerKind;
+  switchKind: (kind: CareerKind) => void;
   start: (firm: string) => void;
   takeJob: (brief: Brief) => void;
   continueJob: () => void;
@@ -32,7 +35,18 @@ export function renderOffice(
   actions: OfficeActions,
   payout?: { payout: Payout; brief: Brief } | null,
 ): void {
+  const tabs = elt('div', 'segmented office-tabs');
+  for (const [k, label] of [
+    ['career', 'Career'],
+    ['sandbox', 'Sandbox career'],
+  ] as const) {
+    const b = btn(label, () => actions.switchKind(k));
+    b.setAttribute('aria-pressed', String(actions.kind === k));
+    tabs.append(b);
+  }
+
   if (!save) {
+    const sandbox = actions.kind === 'sandbox';
     const input = elt('input');
     input.type = 'text';
     input.maxLength = 40;
@@ -44,8 +58,15 @@ export function renderOffice(
     const row = elt('div', 'dialog-actions');
     row.append(btn('Not now', actions.close), go);
     root.replaceChildren(
-      elt('h2', '', 'Start your design firm'),
-      elt('p', 'muted', 'You’re a rookie designer with a laptop and big ideas. Take small jobs, keep clients happy, and grow into a firm that designs skyscrapers.'),
+      tabs,
+      elt('h2', '', sandbox ? 'Start a sandbox firm' : 'Start your design firm'),
+      elt(
+        'p',
+        'muted',
+        sandbox
+          ? 'Skip the climb: you run a top-level firm with everything unlocked and a steady stream of clients. No objectives, but client budgets still apply.'
+          : 'You’re a rookie designer with a laptop and big ideas. Take small jobs, keep clients happy, and grow into a firm that designs skyscrapers.',
+      ),
       label,
       row,
     );
@@ -60,7 +81,7 @@ export function renderOffice(
   money.append(elt('div', 'money', fmtMoney(save.money)), elt('div', 'muted small', `${save.xp} XP`));
   head.append(titles, money);
 
-  const parts: HTMLElement[] = [head];
+  const parts: HTMLElement[] = [tabs, head];
 
   if (payout) {
     const p = payout.payout;
@@ -117,8 +138,9 @@ export function renderOffice(
       list.append(li);
     }
     parts.push(list, elt('p', 'muted small', `Unlocks: ${next.unlocks}`));
-  } else if (save.tier < MAX_TIER || save.tier === MAX_TIER) {
-    parts.push(
+  } else {
+    if (save.id === 'sandbox') parts.push(elt('p', 'muted small', 'Sandbox: everything is unlocked and new clients rotate in as you finish jobs.'));
+    else parts.push(
       elt('h3', '', 'More clients on the way'),
       elt('p', 'muted small', `Tier ${save.tier} jobs (${tier.unlocks.toLowerCase()}) are still on the drawing board. Replay jobs for three stars in the meantime.`),
     );

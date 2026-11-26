@@ -870,3 +870,14 @@ dialog h3 {
     display: none;
   }
 }
+.design-list li.group {
+  border-bottom: none;
+  padding: 12px 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.office-tabs {
+  margin-bottom: 14px;
+}

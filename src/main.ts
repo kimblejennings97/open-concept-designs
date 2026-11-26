@@ -10,7 +10,7 @@ import { BRIEFS, type Brief, getBrief } from './data/catalog';
 import { evaluateJob } from './game/evaluate';
 import { scoreAesthetics } from './model/scoring';
 import { renderBriefPanel, renderReport } from './ui/brief';
-import { type CareerSave, type Payout, newCareer, recordJob } from './game/career';
+import { type CareerKind, type CareerSave, type Payout, newCareer, recordJob } from './game/career';
 import { renderOffice } from './ui/career';
 import { deleteGame, loadGame, saveGame } from './storage/db';
 import {
@@ -478,58 +478,78 @@ function submitDesign(brief: Brief): void {
 // Career
 // ---------------------------------------------------------------------------
 
-let career: CareerSave | null = null;
-let careerLoaded = false;
+/** Loaded saves per slot (career and sandbox are separate). */
+const careers: Record<CareerKind, CareerSave | null> = { career: null, sandbox: null };
+let careersLoaded = false;
+/** Which tab the office shows. */
+let officeKind: CareerKind = 'career';
 
-async function loadCareer(): Promise<CareerSave | null> {
-  if (!careerLoaded) {
+async function loadCareers(): Promise<void> {
+  if (careersLoaded) return;
+  for (const kind of ['career', 'sandbox'] as const) {
     try {
-      career = (await loadGame<CareerSave>('career')) ?? null;
+      careers[kind] = (await loadGame<CareerSave>(kind)) ?? null;
     } catch {
-      career = null;
+      careers[kind] = null;
     }
-    careerLoaded = true;
   }
-  return career;
+  careersLoaded = true;
 }
 
-async function persistCareer(): Promise<void> {
-  if (!career) return;
+async function persistCareer(kind: CareerKind): Promise<void> {
+  const save = careers[kind];
+  if (!save) return;
   try {
-    await saveGame(career);
+    await saveGame(save);
   } catch (err) {
     console.error(err);
     setSaveState('Career not saved: browser storage is unavailable', true);
   }
 }
 
+/** The save a design belongs to, if it's a career or sandbox job. */
+function saveForDesign(d: Design): { kind: CareerKind; save: CareerSave } | null {
+  const kind = d.mode === 'career' || d.mode === 'sandbox' ? d.mode : null;
+  const save = kind ? careers[kind] : null;
+  return kind && save ? { kind, save } : null;
+}
+
 /** Career jobs only offer what your tier has unlocked; other modes get everything. */
 function unlockedTier(): number {
-  return editor.design.mode === 'career' && career ? career.tier : Infinity;
+  const s = saveForDesign(editor.design);
+  return s?.kind === 'career' ? s.save.tier : Infinity;
 }
 
 async function openOffice(payout?: { payout: Payout; brief: Brief }): Promise<void> {
-  await loadCareer();
+  await loadCareers();
+  const kind = officeKind;
+  const save = careers[kind];
   renderOffice(
     el.career,
-    career,
+    save,
     {
+      kind,
+      switchKind: (k) => {
+        officeKind = k;
+        void openOffice();
+      },
       start: (firm) => {
-        career = newCareer(firm);
-        void persistCareer();
+        careers[kind] = newCareer(firm, kind);
+        void persistCareer(kind);
         void openOffice();
       },
       takeJob: (brief) => {
-        if (!career) return;
+        const current = careers[kind];
+        if (!current) return;
         const d = designForBrief(brief);
-        d.mode = 'career';
-        career = { ...career, active: { briefId: brief.id, designId: d.id } };
-        void persistCareer();
+        d.mode = kind;
+        careers[kind] = { ...current, active: { briefId: brief.id, designId: d.id } };
+        void persistCareer(kind);
         el.dlgCareer.close();
         void switchTo(d).then(() => flushSave());
       },
       continueJob: async () => {
-        const id = career?.active?.designId;
+        const id = careers[kind]?.active?.designId;
         if (!id) return;
         el.dlgCareer.close();
         if (editor.design.id === id) return;
@@ -537,9 +557,10 @@ async function openOffice(payout?: { payout: Payout; brief: Brief }): Promise<vo
         if (file) await switchTo(deserialize(file));
       },
       reset: () => {
-        if (!confirm('Reset your career? Your firm, money and stars will be lost (your designs stay).')) return;
-        career = null;
-        void deleteGame('career').catch(() => {});
+        const what = kind === 'sandbox' ? 'sandbox career' : 'career';
+        if (!confirm(`Reset your ${what}? The firm, money and stars will be lost (your designs stay).`)) return;
+        careers[kind] = null;
+        void deleteGame(kind).catch(() => {});
         void openOffice();
       },
       close: () => el.dlgCareer.close(),
@@ -550,17 +571,21 @@ async function openOffice(payout?: { payout: Payout; brief: Brief }): Promise<vo
 }
 
 reportExtras = (brief, ev) => {
-  if (editor.design.mode !== 'career' || !career) return {};
+  const owner = saveForDesign(editor.design);
+  if (!owner) return {};
   return {
     collectLabel: ev.result.passed ? 'Collect fee & back to office' : 'Back to office',
     collect: () => {
-      if (!career) return;
-      const payout = recordJob(career, ev.result);
-      career = payout.save;
-      if (ev.result.passed && career.active?.briefId === brief.id) career = { ...career, active: undefined };
-      void persistCareer();
+      const current = careers[owner.kind];
+      if (!current) return;
+      const payout = recordJob(current, ev.result);
+      let next = payout.save;
+      if (ev.result.passed && next.active?.briefId === brief.id) next = { ...next, active: undefined };
+      careers[owner.kind] = next;
+      void persistCareer(owner.kind);
       el.dlgReport.close();
-      void openOffice({ payout, brief });
+      officeKind = owner.kind;
+      void openOffice({ payout: { ...payout, save: next }, brief });
     },
   };
 };
@@ -816,6 +841,7 @@ el.dlgNew.addEventListener('close', () => {
   } else {
     d = createDesign(name, toCells(f.get('w')), toCells(f.get('h')));
   }
+  d.mode = 'free';
   void switchTo(d).then(() => flushSave());
 });
 
@@ -834,7 +860,17 @@ async function openOpenDialog(): Promise<void> {
     li.textContent = 'No saved designs yet.';
     el.designList.append(li);
   }
+  const groups: Record<string, string> = { free: 'Free build', career: 'Career jobs', sandbox: 'Sandbox jobs' };
+  designs.sort((a, b) => Object.keys(groups).indexOf(a.mode) - Object.keys(groups).indexOf(b.mode) || b.updatedAt - a.updatedAt);
+  let group = '';
   for (const s of designs) {
+    if (s.mode !== group) {
+      group = s.mode;
+      const h = document.createElement('li');
+      h.className = 'group';
+      h.textContent = groups[group] ?? group;
+      el.designList.append(h);
+    }
     const li = document.createElement('li');
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -989,7 +1025,7 @@ window.addEventListener('beforeunload', () => {
 refreshUi(true);
 renderBrief();
 // First visit: invite the player to start a career.
-if (!getLastDesignId()) void loadCareer().then((c) => (c ? undefined : openOffice()));
+if (!getLastDesignId()) void loadCareers().then(() => (careers.career ? undefined : openOffice()));
 export const hooks = {
   setReportExtras(fn: typeof reportExtras) {
     reportExtras = fn;

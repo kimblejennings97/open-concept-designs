@@ -32,7 +32,8 @@ export interface JobRecord {
 }
 
 export interface CareerSave {
-  id: 'career';
+  /** Save slot: a normal career, or a sandbox career (top tier, everything unlocked). */
+  id: CareerKind;
   version: 1;
   firm: string;
   tier: number;
@@ -44,8 +45,19 @@ export interface CareerSave {
   startedAt: number;
 }
 
-export function newCareer(firm: string): CareerSave {
-  return { id: 'career', version: 1, firm: firm.trim() || 'My Design Studio', tier: 1, money: 5000, xp: 0, jobs: {}, startedAt: Date.now() };
+export type CareerKind = 'career' | 'sandbox';
+
+export function newCareer(firm: string, kind: CareerKind = 'career'): CareerSave {
+  return {
+    id: kind,
+    version: 1,
+    firm: firm.trim() || 'My Design Studio',
+    tier: kind === 'sandbox' ? MAX_TIER : 1,
+    money: kind === 'sandbox' ? 250000 : 5000,
+    xp: 0,
+    jobs: {},
+    startedAt: Date.now(),
+  };
 }
 
 /** Story order for the first jobs: the starter home, then the corner store, then the rest of the tier. */
@@ -53,6 +65,12 @@ const FIRST_JOBS = ['starter-home', 'corner-store'];
 
 /** Offers on the board right now (2–4). */
 export function offers(save: CareerSave): Brief[] {
+  if (save.id === 'sandbox') {
+    // A rotating stream of every client: it moves along each time a job is finished.
+    const done = Object.values(save.jobs).reduce((n, j) => n + j.completions, 0);
+    const n = BRIEFS.length;
+    return Array.from({ length: Math.min(4, n) }, (_, i) => BRIEFS[(done + i) % n]);
+  }
   const pending = FIRST_JOBS.find((id) => !save.jobs[id]?.completions);
   if (pending) {
     const brief = BRIEFS.find((b) => b.id === pending);
@@ -73,6 +91,7 @@ export interface ObjectiveStatus {
 }
 
 export function objectiveStatus(save: CareerSave): ObjectiveStatus[] {
+  if (save.id === 'sandbox') return [];
   return tierInfo(save.tier).objectives.map((o) => {
     if (o.kind === 'jobs') {
       const progress = Object.values(save.jobs).filter((j) => j.stars >= o.minStars).length;
