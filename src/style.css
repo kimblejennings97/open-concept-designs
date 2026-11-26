@@ -371,3 +371,20 @@ dialog .row {
 .design-list .empty {
   color: var(--muted);
 }
+
+/* Furniture panel */
+.note.bad {
+  color: var(--danger);
+}
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.swatches.catalog .swatch-title {
+  margin: 8px 0 2px;
+}
+.options .action-grid {
+  margin-bottom: 12px;
+}

@@ -9,6 +9,7 @@ import {
   parseEdge,
 } from './grid';
 import { normalizeRoomData } from './rooms';
+import { type Furniture, normalizeFurniture } from './furniture';
 
 // ---------------------------------------------------------------------------
 // Openings (doors & windows)
@@ -65,6 +66,7 @@ export interface Design {
   wallFinishes: Map<string, string>;
   /** Room type id per anchor cell (see rooms.ts). */
   roomTypes: Map<string, string>;
+  furniture: Furniture[];
 }
 
 /** JSON form, used for saving, undo snapshots, and (later) export/import. */
@@ -80,6 +82,7 @@ export interface DesignFile {
   floors?: Record<string, string>;
   wallFinishes?: Record<string, string>;
   roomTypes?: Record<string, string>;
+  furniture?: Furniture[];
 }
 
 export function newId(): string {
@@ -99,6 +102,7 @@ export function createDesign(name = 'Untitled design', lotW = 40, lotH = 30): De
     floors: new Map(),
     wallFinishes: new Map(),
     roomTypes: new Map(),
+    furniture: [],
   };
 }
 
@@ -123,6 +127,7 @@ export function serialize(d: Design): DesignFile {
     floors: sortedRecord(d.floors),
     wallFinishes: sortedRecord(d.wallFinishes),
     roomTypes: sortedRecord(d.roomTypes),
+    furniture: d.furniture.map((f) => ({ ...f })),
   };
 }
 
@@ -144,6 +149,7 @@ export function deserialize(raw: unknown): Design {
     floors: stringMap(f.floors),
     wallFinishes: stringMap(f.wallFinishes),
     roomTypes: stringMap(f.roomTypes),
+    furniture: Array.isArray(f.furniture) ? f.furniture.map((x) => ({ ...x })) : [],
   };
   normalize(d);
   return d;
@@ -249,6 +255,7 @@ export function normalize(d: Design): void {
   }
   d.openings = kept;
   normalizeRoomData(d);
+  normalizeFurniture(d);
 }
 
 /** Fill (add) or clear (remove) the rectangle of cells between two corners, inclusive. */

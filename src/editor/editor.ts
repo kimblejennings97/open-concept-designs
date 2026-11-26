@@ -18,10 +18,24 @@ import {
 } from '../model/design';
 import { type Edge, cellKey, edgeKey, fmtMeters, lineEdges, nearestEdge, parseCell, parseEdge } from '../model/grid';
 import { type Room, type RoomMap, findRooms, parseSideKey } from '../model/rooms';
-import { floorMaterial, roomType, wallFinish } from '../data/catalog';
+import { type CatalogItem, catalogItem, floorMaterial, roomType, wallFinish } from '../data/catalog';
+import {
+  type Furniture,
+  type FurnitureCheck,
+  type Rotation,
+  addFurniture,
+  checkAllFurniture,
+  checkFurniture,
+  clearanceCells,
+  furnitureAt,
+  nextRotation,
+  removeFurniture,
+  rotatedSize,
+  updateFurniture,
+} from '../model/furniture';
 import { History } from './history';
 
-export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'room' | 'erase';
+export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'room' | 'furniture' | 'erase';
 export type DoorKind = 'door' | 'double-door';
 
 export const TOOL_HINTS: Record<ToolId, string> = {
@@ -30,7 +44,8 @@ export const TOOL_HINTS: Record<ToolId, string> = {
   door: 'Click a wall to place a door. R flips the swing. Right-click a door to remove it.',
   window: 'Click an exterior wall to place a window. [ and ] change the width. Right-click to remove.',
   room: 'Click a room to select it, then set its type, flooring and wall finish in the sidebar. Esc deselects.',
-  erase: 'Click or drag over doors, windows and walls to remove them.',
+  furniture: 'Pick an item from the catalog, then click to place it. R rotates. Drag a placed item to move it; right-click or Delete removes it.',
+  erase: 'Click or drag over furniture, doors, windows and walls to remove them.',
 };
 
 const MIN_SCALE = 4;
@@ -61,13 +76,15 @@ const COLORS = {
   openHatch: 'rgba(255, 207, 112, 0.35)',
   selected: '#ffcf70',
   hover: 'rgba(255, 207, 112, 0.5)',
+  clearance: 'rgba(255, 255, 255, 0.06)',
 };
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number }
   | { kind: 'rect'; add: boolean; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'line'; add: boolean; ax: number; ay: number; bx: number; by: number }
-  | { kind: 'erase'; before: string; changed: boolean; layer: 'opening' | 'wall' | null };
+  | { kind: 'erase'; before: string; changed: boolean; layer: 'furniture' | 'opening' | 'wall' | null }
+  | { kind: 'move'; id: string; offX: number; offY: number; before: string; ox: number; oy: number };
 
 export class Editor {
   design: Design;
@@ -77,6 +94,11 @@ export class Editor {
   doorKind: DoorKind = 'door';
   windowLen = OPENING_SPECS.window.defaultLen;
   doorFlip = false;
+  /** Catalog item the Furniture tool will place, if any. */
+  armedItem: string | null = null;
+  furnitureRot: Rotation = 0;
+  /** Selected furniture piece id. */
+  selectedFurnitureId: string | null = null;
 
   /** Short message about the current hover (e.g. why a door can't go here). */
   message = '';
@@ -98,6 +120,7 @@ export class Editor {
   /** Bumped on every design edit; keys the room cache. */
   private rev = 0;
   private roomCache: { rev: number; map: RoomMap } | null = null;
+  private checkCache: { rev: number; map: Map<string, FurnitureCheck> } | null = null;
   /** A cell inside the selected room (cells survive edits better than room objects). */
   private selectedCell: string | null = null;
 
@@ -134,6 +157,7 @@ export class Editor {
     this.design = d;
     this.drag = null;
     this.selectedCell = null;
+    this.selectedFurnitureId = null;
     this.rev++;
     this.history.clear();
     this.fitView();
@@ -162,6 +186,74 @@ export class Editor {
   flipDoor(): void {
     this.doorFlip = !this.doorFlip;
     this.changed(false);
+  }
+
+  /** R key: flip a door's swing, or rotate the furniture ghost / selected piece. */
+  rotate(): void {
+    if (this.tool === 'door') {
+      this.flipDoor();
+    } else if (this.tool === 'furniture') {
+      if (this.armedItem) {
+        this.furnitureRot = nextRotation(this.furnitureRot);
+        this.updateMessage();
+        this.changed(false);
+      } else {
+        this.rotateSelectedFurniture();
+      }
+    }
+  }
+
+  armItem(id: string | null): void {
+    this.armedItem = id;
+    if (id) this.selectedFurnitureId = null;
+    this.changed(false);
+  }
+
+  selectedFurniture(): Furniture | null {
+    return this.design.furniture.find((f) => f.id === this.selectedFurnitureId) ?? null;
+  }
+
+  rotateSelectedFurniture(): void {
+    const f = this.selectedFurniture();
+    const item = f && catalogItem(f.item);
+    if (!f || !item) return;
+    const rot = nextRotation(f.rot);
+    // Rotate about the piece's center.
+    const a = rotatedSize(item, f.rot);
+    const b = rotatedSize(item, rot);
+    const next: Furniture = { ...f, rot, x: f.x + Math.floor((a.w - b.w) / 2), y: f.y + Math.floor((a.h - b.h) / 2) };
+    const { errors } = checkFurniture(this.design, next, this.getRooms());
+    if (errors.length) {
+      this.message = "Can't rotate here: " + errors[0].toLowerCase();
+      this.changed(false);
+      return;
+    }
+    this.mutate((d) => updateFurniture(d, f.id, { rot: next.rot, x: next.x, y: next.y }));
+  }
+
+  deleteSelectedFurniture(): void {
+    const id = this.selectedFurnitureId;
+    if (id) this.mutate((d) => removeFurniture(d, id));
+  }
+
+  /** Esc: drop the armed item, then clear selections. */
+  escape(): void {
+    if (this.armedItem) {
+      this.armItem(null);
+    } else if (this.selectedFurnitureId) {
+      this.selectedFurnitureId = null;
+      this.changed(false);
+    } else {
+      this.clearSelection();
+    }
+  }
+
+  /** Errors and warnings for every placed piece (cached per edit). */
+  getChecks(): Map<string, FurnitureCheck> {
+    if (!this.checkCache || this.checkCache.rev !== this.rev) {
+      this.checkCache = { rev: this.rev, map: checkAllFurniture(this.design, this.getRooms()) };
+    }
+    return this.checkCache.map;
   }
 
   nudgeWindowLen(delta: number): void {
@@ -243,6 +335,7 @@ export class Editor {
   private changed(designChanged: boolean): void {
     if (designChanged) this.rev++;
     if (this.selectedCell && !this.design.footprint.has(this.selectedCell)) this.selectedCell = null;
+    if (this.selectedFurnitureId && !this.selectedFurniture()) this.selectedFurnitureId = null;
     this.requestRender();
     this.onChange(designChanged);
   }
@@ -332,6 +425,31 @@ export class Editor {
         this.selectedCell = room ? cellKey(Math.floor(p.wx), Math.floor(p.wy)) : null;
         break;
       }
+      case 'furniture': {
+        const hit = furnitureAt(this.design, cellKey(Math.floor(p.wx), Math.floor(p.wy)));
+        if (remove) {
+          if (hit) this.mutate((d) => removeFurniture(d, hit.id));
+        } else if (hit && !(this.armedItem && this.ghostOk(p.wx, p.wy))) {
+          // Clicking a placed piece picks it up (unless the armed item fits here, e.g. a rug under a sofa).
+          this.selectedFurnitureId = hit.id;
+          this.armedItem = null;
+          this.drag = {
+            kind: 'move',
+            id: hit.id,
+            offX: Math.floor(p.wx) - hit.x,
+            offY: Math.floor(p.wy) - hit.y,
+            before: snapshot(this.design),
+            ox: hit.x,
+            oy: hit.y,
+          };
+        } else if (this.armedItem) {
+          const g = this.ghost(p.wx, p.wy);
+          if (g && this.ghostOk(p.wx, p.wy)) this.mutate((d) => addFurniture(d, { ...g, id: newId() }));
+        } else {
+          this.selectedFurnitureId = null;
+        }
+        break;
+      }
       case 'erase': {
         this.drag = { kind: 'erase', before: snapshot(this.design), changed: false, layer: null };
         this.eraseAt(p.wx, p.wy);
@@ -364,6 +482,10 @@ export class Editor {
       }
     } else if (drag?.kind === 'erase') {
       this.eraseAt(p.wx, p.wy);
+    } else if (drag?.kind === 'move') {
+      const x = Math.floor(p.wx) - drag.offX;
+      const y = Math.floor(p.wy) - drag.offY;
+      if (updateFurniture(this.design, drag.id, { x, y })) this.rev++;
     }
     this.updateMessage();
     this.changed(false);
@@ -381,9 +503,26 @@ export class Editor {
     } else if (drag?.kind === 'erase' && drag.changed) {
       this.history.record(drag.before);
       this.changed(true);
+    } else if (drag?.kind === 'move') {
+      this.finishMove(drag);
     }
     this.updateCursor();
     this.changed(false);
+  }
+
+  private finishMove(drag: Extract<Drag, { kind: 'move' }>): void {
+    const f = this.design.furniture.find((o) => o.id === drag.id);
+    if (!f || (f.x === drag.ox && f.y === drag.oy)) return;
+    const { errors } = checkFurniture(this.design, f, this.getRooms());
+    if (errors.length) {
+      // Snap back to where it was.
+      updateFurniture(this.design, f.id, { x: drag.ox, y: drag.oy });
+      this.rev++;
+      this.message = "Can't move there: " + errors[0].toLowerCase();
+      return;
+    }
+    this.history.record(drag.before);
+    this.changed(true);
   }
 
   private onWheel(e: WheelEvent): void {
@@ -401,12 +540,24 @@ export class Editor {
   private eraseAt(wx: number, wy: number): void {
     const drag = this.drag;
     if (drag?.kind !== 'erase') return;
+    if (drag.layer === null || drag.layer === 'furniture') {
+      const hit = furnitureAt(this.design, cellKey(Math.floor(wx), Math.floor(wy)));
+      if (hit) {
+        removeFurniture(this.design, hit.id);
+        drag.layer = 'furniture';
+        drag.changed = true;
+        this.rev++;
+        return;
+      }
+      if (drag.layer === 'furniture') return;
+    }
     const edge = this.edgeUnder(wx, wy);
     if (!edge) return;
     const key = edgeKey(edge.o, edge.x, edge.y);
     const op = openingOnEdge(this.design, key);
     if (op && drag.layer !== 'wall') {
       removeOpening(this.design, op.id);
+      this.rev++;
       drag.layer = 'opening';
       drag.changed = true;
     } else if (!op && this.design.walls.has(key) && drag.layer !== 'opening') {
@@ -453,6 +604,25 @@ export class Editor {
     if (!p || this.drag) return;
     const op = this.openingPreview(p.wx, p.wy);
     if (op) this.message = openingProblem(this.design, op) ?? '';
+    const g = this.ghost(p.wx, p.wy);
+    if (g) {
+      const c = checkFurniture(this.design, g, this.getRooms());
+      this.message = c.errors[0] ?? c.warnings[0] ?? '';
+    }
+  }
+
+  /** The piece the Furniture tool would place at this point (not yet validated). */
+  private ghost(wx: number, wy: number): Furniture | null {
+    if (this.tool !== 'furniture' || !this.armedItem) return null;
+    const item = catalogItem(this.armedItem);
+    if (!item) return null;
+    const { w, h } = rotatedSize(item, this.furnitureRot);
+    return { id: 'ghost', item: item.id, x: Math.round(wx - w / 2), y: Math.round(wy - h / 2), rot: this.furnitureRot };
+  }
+
+  private ghostOk(wx: number, wy: number): boolean {
+    const g = this.ghost(wx, wy);
+    return !!g && checkFurniture(this.design, g, this.getRooms()).errors.length === 0;
   }
 
   // -------------------------------------------------------------------------
@@ -486,14 +656,20 @@ export class Editor {
     ctx.translate(cam.ox, cam.oy);
     ctx.scale(s, s);
     this.drawOpenAreas();
+    this.drawFurnitureLayer('floor');
+    if (this.tool === 'furniture') this.drawClearances();
     this.drawWallFinishes();
     this.drawWalls();
     for (const op of d.openings) this.drawOpening(op, null);
+    this.drawFurnitureLayer('object');
+    this.drawFurnitureLayer('wall');
+    this.drawFurnitureLayer('ceiling');
     this.drawRoomOutlines();
     this.drawPreview();
     ctx.restore();
 
     this.drawRoomLabels();
+    this.drawFurnitureBadges();
     this.drawLabels();
   }
 
@@ -740,6 +916,146 @@ export class Editor {
     }
   }
 
+  private drawFurnitureLayer(layer: CatalogItem['layer']): void {
+    for (const f of this.design.furniture) {
+      const item = catalogItem(f.item);
+      if (item?.layer === layer) this.drawPiece(f, item, null);
+    }
+  }
+
+  /** Draw a piece. `tint` replaces its color for placement ghosts. */
+  private drawPiece(f: Furniture, item: CatalogItem, tint: string | null): void {
+    const { ctx } = this;
+    const { w, h } = rotatedSize(item, f.rot);
+    const px = 1 / this.cam.scale;
+    const color = tint ?? item.color;
+    const ink = 'rgba(0, 0, 0, 0.55)';
+    ctx.save();
+    if (tint) ctx.globalAlpha = 0.85;
+
+    if (item.layer === 'floor') {
+      ctx.globalAlpha *= 0.6;
+      ctx.fillStyle = color;
+      ctx.fillRect(f.x + 0.1, f.y + 0.1, w - 0.2, h - 0.2);
+      ctx.globalAlpha = tint ? 0.85 : 1;
+      ctx.setLineDash([4 * px, 3 * px]);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = px;
+      ctx.strokeRect(f.x + 0.3, f.y + 0.3, w - 0.6, h - 0.6);
+      ctx.setLineDash([]);
+    } else if (item.layer === 'ceiling') {
+      ctx.globalAlpha *= 0.3;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.ellipse(f.x + w / 2, f.y + h / 2, w / 2 - 0.1, h / 2 - 0.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = tint ? 0.85 : 1;
+      ctx.setLineDash([3 * px, 3 * px]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5 * px;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (item.layer === 'wall') {
+      // A thin bar along the wall it hangs on.
+      const depth = 0.35;
+      const back = f.rot % 4;
+      const r: [number, number, number, number] =
+        back === 0
+          ? [f.x, f.y, w, depth]
+          : back === 1
+            ? [f.x + w - depth, f.y, depth, h]
+            : back === 2
+              ? [f.x, f.y + h - depth, w, depth]
+              : [f.x, f.y, depth, h];
+      ctx.fillStyle = color;
+      ctx.fillRect(...r);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = px;
+      ctx.strokeRect(...r);
+    } else {
+      const inset = 0.06;
+      ctx.fillStyle = color;
+      roundRect(ctx, f.x + inset, f.y + inset, w - inset * 2, h - inset * 2, Math.min(0.25, w / 4, h / 4));
+      ctx.fill();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = px;
+      ctx.stroke();
+      // A light bar marks the front.
+      const front = (2 + f.rot) % 4;
+      const i = 0.2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 2 * px;
+      ctx.beginPath();
+      if (front === 0) {
+        ctx.moveTo(f.x + i, f.y + i);
+        ctx.lineTo(f.x + w - i, f.y + i);
+      } else if (front === 1) {
+        ctx.moveTo(f.x + w - i, f.y + i);
+        ctx.lineTo(f.x + w - i, f.y + h - i);
+      } else if (front === 2) {
+        ctx.moveTo(f.x + i, f.y + h - i);
+        ctx.lineTo(f.x + w - i, f.y + h - i);
+      } else {
+        ctx.moveTo(f.x + i, f.y + i);
+        ctx.lineTo(f.x + i, f.y + h - i);
+      }
+      ctx.stroke();
+    }
+
+    if (!tint) {
+      const check = this.getChecks().get(f.id);
+      const selected = f.id === this.selectedFurnitureId;
+      if (check?.errors.length || selected) {
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = check?.errors.length ? COLORS.bad : COLORS.selected;
+        ctx.lineWidth = 2 * px;
+        ctx.strokeRect(f.x - 2 * px, f.y - 2 * px, w + 4 * px, h + 4 * px);
+      }
+    }
+    ctx.restore();
+  }
+
+  private drawClearance(f: Furniture, item: CatalogItem, fill: string): void {
+    const cells = clearanceCells(item, f);
+    if (!cells.length) return;
+    cellsPath(this.ctx, cells);
+    this.ctx.fillStyle = fill;
+    this.ctx.fill();
+  }
+
+  /** Faint clearance zones for every placed piece, shown while using the Furniture tool. */
+  private drawClearances(): void {
+    for (const f of this.design.furniture) {
+      const item = catalogItem(f.item);
+      if (item?.layer === 'object') this.drawClearance(f, item, COLORS.clearance);
+    }
+  }
+
+  /** "!" badges on pieces with problems. */
+  private drawFurnitureBadges(): void {
+    const { ctx, cam } = this;
+    if (cam.scale < 8) return;
+    const checks = this.getChecks();
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const f of this.design.furniture) {
+      const check = checks.get(f.id);
+      const item = catalogItem(f.item);
+      if (!check || !item || (!check.errors.length && !check.warnings.length)) continue;
+      const { w } = rotatedSize(item, f.rot);
+      const x = (f.x + w) * cam.scale + cam.ox - 2;
+      const y = f.y * cam.scale + cam.oy + 2;
+      ctx.fillStyle = check.errors.length ? COLORS.bad : COLORS.warn;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1b1405';
+      ctx.fillText('!', x, y + 0.5);
+    }
+    ctx.textAlign = 'start';
+  }
+
   private drawPreview(): void {
     const { ctx, drag, pointer } = this;
     const lw = 2 / this.cam.scale;
@@ -770,6 +1086,17 @@ export class Editor {
     }
 
     if (drag || !pointer) return;
+
+    const g = this.ghost(pointer.wx, pointer.wy);
+    if (g) {
+      const item = catalogItem(g.item);
+      if (!item) return;
+      const check = checkFurniture(this.design, g, this.getRooms());
+      const color = check.errors.length ? COLORS.bad : check.warnings.length ? COLORS.warn : COLORS.ok;
+      if (item.layer === 'object') this.drawClearance(g, item, withAlpha(color, 0.18));
+      this.drawPiece(g, item, color);
+      return;
+    }
 
     if (this.tool === 'wall') {
       ctx.fillStyle = this.shiftHeld ? COLORS.bad : COLORS.ok;

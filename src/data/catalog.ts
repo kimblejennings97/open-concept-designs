@@ -5,6 +5,7 @@
 import materials from './materials.json';
 import roomTypes from './roomTypes.json';
 import costs from './costs.json';
+import catalog from './catalog.json';
 
 export type BuildingType = 'house' | 'store';
 
@@ -26,6 +27,34 @@ export interface RoomType {
   /** Smallest sensible size; used for warnings and brief checks later. */
   minAreaM2: number;
 }
+
+export type FurnitureLayer = 'floor' | 'object' | 'wall' | 'ceiling';
+export type CostBucketId = 'fixtures' | 'decor' | 'luxury';
+
+export interface CatalogItem {
+  id: string;
+  name: string;
+  category: string;
+  buildingTypes: BuildingType[];
+  /** Room types it's meant for; empty = anywhere. */
+  roomTypes: string[];
+  /** Footprint in cells at rotation 0 (front faces +y). */
+  w: number;
+  h: number;
+  /** Free space it needs around it, in cells, relative to the item. */
+  clearance: { front: number; back: number; left: number; right: number };
+  layer: FurnitureLayer;
+  againstWall: boolean;
+  cost: number;
+  bucket: CostBucketId;
+  tags: string[];
+  tier: number;
+  color: string;
+}
+
+export const CATALOG: readonly CatalogItem[] = catalog.items as CatalogItem[];
+const itemById = new Map(CATALOG.map((i) => [i.id, i]));
+export const catalogItem = (id: string | undefined) => (id ? itemById.get(id) : undefined);
 
 export const FLOOR_MATERIALS: readonly Material[] = materials.floors;
 export const WALL_FINISHES: readonly Material[] = materials.walls;

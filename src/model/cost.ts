@@ -1,9 +1,9 @@
-import { COSTS, floorMaterial, roomType, wallFinish } from '../data/catalog';
+import { COSTS, catalogItem, floorMaterial, roomType, wallFinish } from '../data/catalog';
 import { type Design, openingEdges, stats, wallKind } from './design';
 import { CELL_M } from './grid';
 import type { Room } from './rooms';
 
-export type CostBucket = 'structure' | 'systems' | 'finishes';
+export type CostBucket = 'structure' | 'systems' | 'finishes' | 'fixtures' | 'decor';
 
 export interface CostLine {
   bucket: CostBucket;
@@ -16,6 +16,8 @@ export interface CostSummary {
   structure: number;
   systems: number;
   finishes: number;
+  fixtures: number;
+  decor: number;
   total: number;
 }
 
@@ -56,11 +58,36 @@ export function computeCost(d: Design, rooms: Room[]): CostSummary {
   for (const id of d.wallFinishes.values()) walls += (wallFinish(id)?.costPerM2 ?? 0) * CELL_M * COSTS.wallHeightM;
   add('finishes', 'Wall finishes', walls);
 
+  // Furniture
+  let fixtures = 0;
+  let decor = 0;
+  let luxury = 0;
+  for (const f of d.furniture) {
+    const item = catalogItem(f.item);
+    if (!item) continue;
+    if (item.bucket === 'fixtures') fixtures += item.cost;
+    else if (item.bucket === 'decor') decor += item.cost;
+    else luxury += item.cost;
+  }
+  add('fixtures', 'Furniture & fixtures', fixtures);
+  add('decor', 'Decor', decor);
+  add('decor', 'Luxury pieces', luxury);
+
   const sum = (b: CostBucket) => lines.filter((l) => l.bucket === b).reduce((t, l) => t + l.amount, 0);
   const structure = sum('structure');
   const systems = sum('systems');
   const finishes = sum('finishes');
-  return { lines, structure, systems, finishes, total: structure + systems + finishes };
+  const fixturesTotal = sum('fixtures');
+  const decorTotal = sum('decor');
+  return {
+    lines,
+    structure,
+    systems,
+    finishes,
+    fixtures: fixturesTotal,
+    decor: decorTotal,
+    total: structure + systems + finishes + fixturesTotal + decorTotal,
+  };
 }
 
 export function fmtMoney(n: number): string {

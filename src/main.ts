@@ -4,7 +4,16 @@ import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint
 import { CELL_M, fmtMeters } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
-import { FLOOR_MATERIALS, type Material, ROOM_TYPES, WALL_FINISHES, roomType } from './data/catalog';
+import {
+  type BuildingType,
+  CATALOG,
+  FLOOR_MATERIALS,
+  type Material,
+  ROOM_TYPES,
+  WALL_FINISHES,
+  catalogItem,
+  roomType,
+} from './data/catalog';
 import { deleteDesign, listDesigns, loadDesign, saveDesign } from './storage/db';
 import { getLastDesignId, setLastDesignId } from './storage/settings';
 
@@ -16,6 +25,7 @@ const TOOLS: Array<{ id: ToolId; label: string; key: string }> = [
   { id: 'door', label: 'Door', key: 'D' },
   { id: 'window', label: 'Window', key: 'N' },
   { id: 'room', label: 'Room', key: 'O' },
+  { id: 'furniture', label: 'Furniture', key: 'C' },
   { id: 'erase', label: 'Erase', key: 'E' },
 ];
 
@@ -131,6 +141,8 @@ function renderOptions(): void {
     el.options.append(h, label);
   } else if (editor.tool === 'room') {
     renderRoomPanel();
+  } else if (editor.tool === 'furniture') {
+    renderFurniturePanel();
   }
 }
 
@@ -241,6 +253,111 @@ function swatches(
   return wrap;
 }
 
+// ---------------------------------------------------------------------------
+// Furniture panel
+// ---------------------------------------------------------------------------
+
+let catalogBuilding: BuildingType | 'all' = 'all';
+let catalogRoom = '';
+
+function furnitureSignature(): string {
+  const f = editor.selectedFurniture();
+  const check = f ? editor.getChecks().get(f.id) : undefined;
+  return [
+    editor.armedItem,
+    catalogBuilding,
+    catalogRoom,
+    f ? `${f.id}:${f.rot}:${check?.errors.join(',')}:${check?.warnings.join(',')}` : '',
+  ].join('|');
+}
+
+function renderFurniturePanel(): void {
+  const f = editor.selectedFurniture();
+  const item = f && catalogItem(f.item);
+  if (f && item) {
+    const check = editor.getChecks().get(f.id);
+    el.options.append(h2(item.name), note(`${fmtMoney(item.cost)} · ${fmtMeters(item.w)} × ${fmtMeters(item.h)}`));
+    for (const msg of check?.errors ?? []) el.options.append(note(msg, 'note bad'));
+    for (const msg of check?.warnings ?? []) el.options.append(note(msg, 'note warn'));
+    const row = document.createElement('div');
+    row.className = 'action-grid';
+    const rot = document.createElement('button');
+    rot.type = 'button';
+    rot.textContent = 'Rotate (R)';
+    rot.onclick = () => editor.rotateSelectedFurniture();
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'danger';
+    del.textContent = 'Delete';
+    del.onclick = () => editor.deleteSelectedFurniture();
+    row.append(rot, del);
+    el.options.append(row);
+  }
+
+  el.options.append(h2('Catalog'));
+  const filters = document.createElement('div');
+  filters.className = 'filters';
+  const bSel = document.createElement('select');
+  bSel.setAttribute('aria-label', 'Building type');
+  for (const [v, label] of [
+    ['all', 'All buildings'],
+    ['house', 'House'],
+    ['store', 'Store'],
+  ] as const) {
+    bSel.append(new Option(label, v, false, catalogBuilding === v));
+  }
+  bSel.onchange = () => {
+    catalogBuilding = bSel.value as BuildingType | 'all';
+    refreshUi();
+  };
+  const rSel = document.createElement('select');
+  rSel.setAttribute('aria-label', 'Room type');
+  rSel.append(new Option('Any room', '', false, !catalogRoom));
+  for (const t of ROOM_TYPES) rSel.append(new Option(t.name, t.id, false, t.id === catalogRoom));
+  rSel.onchange = () => {
+    catalogRoom = rSel.value;
+    refreshUi();
+  };
+  filters.append(bSel, rSel);
+  el.options.append(filters);
+
+  const items = CATALOG.filter(
+    (i) =>
+      (catalogBuilding === 'all' || i.buildingTypes.includes(catalogBuilding)) &&
+      (!catalogRoom || i.roomTypes.length === 0 || i.roomTypes.includes(catalogRoom)),
+  );
+  if (!items.length) el.options.append(note('Nothing matches these filters.'));
+  let category = '';
+  const list = document.createElement('div');
+  list.className = 'swatches catalog';
+  for (const i of items) {
+    if (i.category !== category) {
+      category = i.category;
+      const c = document.createElement('div');
+      c.className = 'swatch-title';
+      c.textContent = category;
+      list.append(c);
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = `${fmtMeters(i.w)} × ${fmtMeters(i.h)}`;
+    b.setAttribute('aria-pressed', String(editor.armedItem === i.id));
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.style.background = i.color;
+    const n = document.createElement('span');
+    n.className = 'name';
+    n.textContent = i.name;
+    const pr = document.createElement('span');
+    pr.className = 'price';
+    pr.textContent = fmtMoney(i.cost);
+    b.append(chip, n, pr);
+    b.onclick = () => editor.armItem(editor.armedItem === i.id ? null : i.id);
+    list.append(b);
+  }
+  el.options.append(list);
+}
+
 function roomSignature(room: Room | null): string {
   if (!room) return `none:${editor.getRooms().rooms.length}`;
   const d = editor.design;
@@ -283,6 +400,8 @@ function renderStats(): void {
     ['structure', 'Structure'],
     ['systems', 'Systems'],
     ['finishes', 'Finishes'],
+    ['fixtures', 'Furniture'],
+    ['decor', 'Decor'],
   ] as const) {
     rows.push([label, fmtMoney(c[bucket]), 'bucket']);
     for (const line of c.lines.filter((l) => l.bucket === bucket)) rows.push([line.label, fmtMoney(line.amount), 'line']);
@@ -296,7 +415,8 @@ let lastOptionsKey = '';
 
 function refreshUi(designChanged = false): void {
   const roomKey = editor.tool === 'room' ? roomSignature(editor.selectedRoom()) : '';
-  const optionsKey = `${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}`;
+  const furnKey = editor.tool === 'furniture' ? furnitureSignature() : '';
+  const optionsKey = `${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}`;
   if (editor.tool !== lastTool) {
     lastTool = editor.tool;
     renderTools();
@@ -430,11 +550,14 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     editor.setSpaceHeld(true);
   } else if (key === 'escape') {
-    editor.clearSelection();
+    editor.escape();
   } else if (key === 'home') {
     editor.fitView();
+  } else if (key === 'delete' || key === 'backspace') {
+    e.preventDefault();
+    editor.deleteSelectedFurniture();
   } else if (key === 'r') {
-    editor.flipDoor();
+    editor.rotate();
   } else if (key === '[') {
     editor.nudgeWindowLen(-1);
   } else if (key === ']') {
