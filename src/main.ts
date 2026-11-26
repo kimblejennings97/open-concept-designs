@@ -56,6 +56,10 @@ const el = {
   dlgReport: $<HTMLDialogElement>('dlg-report'),
   report: $('report'),
   dlgCareer: $<HTMLDialogElement>('dlg-career'),
+  view3d: $('view3d'),
+  view3dStatus: $('view3d-status'),
+  btn3dPlay: $<HTMLButtonElement>('btn-3d-play'),
+  btn3dWalls: $<HTMLButtonElement>('btn-3d-walls'),
   career: $('career'),
   hint: $('status-hint'),
   pos: $('status-pos'),
@@ -562,6 +566,62 @@ reportExtras = (brief, ev) => {
 };
 
 // ---------------------------------------------------------------------------
+// 3D view (Three.js is loaded on first use to keep the editor light)
+// ---------------------------------------------------------------------------
+
+type ViewerModule = typeof import('./view3d/viewer');
+let viewerModule: Promise<ViewerModule> | null = null;
+let viewer: InstanceType<ViewerModule['Viewer3D']> | null = null;
+
+async function open3D(): Promise<void> {
+  el.view3d.hidden = false;
+  el.view3dStatus.textContent = 'Loading 3D…';
+  try {
+    viewerModule ??= import('./view3d/viewer');
+    const { Viewer3D } = await viewerModule;
+    viewer ??= new Viewer3D(el.view3d, () =>
+      editor.sim ? { result: editor.sim.result, time: editor.simTime, kinds: editor.sim.kinds } : null,
+    );
+    viewer.setCutaway(el.btn3dWalls.getAttribute('aria-pressed') === 'true');
+    viewer.show(editor.design);
+    el.view3dStatus.textContent = '';
+  } catch (err) {
+    console.error(err);
+    el.view3dStatus.textContent = 'Couldn’t start 3D on this device (WebGL may be off).';
+  }
+  refresh3DBar();
+}
+
+function close3D(): void {
+  el.view3d.hidden = true;
+  viewer?.dispose();
+  viewer = null;
+}
+
+function refresh3DBar(): void {
+  if (el.view3d.hidden) return;
+  const r = editor.sim?.result;
+  el.btn3dPlay.textContent = !r ? 'Run people' : editor.simPlaying ? 'Pause' : editor.simTime >= r.duration ? 'Replay' : 'Play';
+  if (r) el.view3dStatus.textContent = `${fmtClock(editor.simTime)} / ${fmtClock(r.duration)} · ${editor.sim!.score}/100 flow`;
+}
+
+el.btn3dPlay.onclick = () => {
+  if (!editor.sim?.result) {
+    runSimulation();
+    viewer?.show(editor.design);
+  } else if (editor.simPlaying) editor.pauseSim();
+  else editor.playSim();
+  refresh3DBar();
+};
+el.btn3dWalls.onclick = () => {
+  const on = el.btn3dWalls.getAttribute('aria-pressed') !== 'true';
+  el.btn3dWalls.setAttribute('aria-pressed', String(on));
+  viewer?.setCutaway(on);
+};
+$('btn-3d-close').onclick = close3D;
+$('btn-3d').onclick = () => void open3D();
+
+// ---------------------------------------------------------------------------
 // Simulation panel
 // ---------------------------------------------------------------------------
 
@@ -671,7 +731,7 @@ function renderSim(): void {
   }
   const again = document.createElement('div');
   again.className = 'sim-controls';
-  again.append(button('Run again', runSimulation), button('Close', () => editor.stopSim()));
+  again.append(button('Watch in 3D', () => void open3D()), button('Run again', runSimulation), button('Close', () => editor.stopSim()));
   parts.push(again, note('Blue = walking, amber = busy, red = stuck. Editing the design clears the results.'));
   el.sim.replaceChildren(...parts);
 }
@@ -709,6 +769,7 @@ function refreshUi(designChanged = false): void {
     renderBrief();
   }
   refreshSim();
+  refresh3DBar();
   el.undo.disabled = !editor.history.canUndo;
   el.redo.disabled = !editor.history.canRedo;
   if (document.activeElement !== el.name) el.name.value = editor.design.name;

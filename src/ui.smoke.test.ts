@@ -225,3 +225,15 @@ describe('career', () => {
     await tick(30);
   });
 });
+
+describe('3D view', () => {
+  it('opens (and falls back gracefully without WebGL), then closes', async () => {
+    clickButton(/^3D$/);
+    await tick(300);
+    const view = document.getElementById('view3d')!;
+    expect(view.hidden).toBe(false);
+    expect(document.getElementById('view3d-status')!.textContent).toMatch(/3D|flow|^$/);
+    clickButton('◀ Blueprint');
+    expect(view.hidden).toBe(true);
+  });
+});

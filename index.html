@@ -14,6 +14,7 @@
         <span id="save-state" class="save-state"></span>
         <span class="spacer"></span>
         <button id="btn-career" type="button" class="primary">Career</button>
+        <button id="btn-3d" type="button" title="See the design in 3D">3D</button>
         <button id="btn-new" type="button">New</button>
         <button id="btn-open" type="button">Open…</button>
       </header>
@@ -58,6 +59,15 @@
 
         <main class="canvas-wrap">
           <canvas id="blueprint"></canvas>
+          <div id="view3d" class="view3d" hidden>
+            <div class="view3d-bar">
+              <button id="btn-3d-close" type="button">◀ Blueprint</button>
+              <button id="btn-3d-walls" type="button" aria-pressed="true">Walls down</button>
+              <button id="btn-3d-play" type="button">Run people</button>
+              <span class="view3d-hint">Drag to orbit · scroll or pinch to zoom · right-drag or two fingers to pan</span>
+            </div>
+            <div id="view3d-status" class="view3d-status"></div>
+          </div>
         </main>
       </div>
 
