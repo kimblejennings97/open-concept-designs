@@ -30,6 +30,10 @@
             </div>
           </section>
           <section id="options" class="options"></section>
+          <section class="sim-section">
+            <h2>Simulate</h2>
+            <div id="sim"></div>
+          </section>
           <section>
             <h2>Edit</h2>
             <div class="action-grid">
@@ -62,6 +66,13 @@
     <dialog id="dlg-new">
       <form method="dialog" id="form-new">
         <h2>New design</h2>
+        <label>Start from
+          <select name="start">
+            <option value="blank">Empty lot</option>
+            <option value="house">Sample: two-bedroom house</option>
+            <option value="store">Sample: corner store</option>
+          </select>
+        </label>
         <label>Name <input name="name" type="text" value="Untitled design" maxlength="80" required /></label>
         <div class="row">
           <label>Lot width (m) <input name="w" type="number" min="5" max="100" step="0.5" value="20" required /></label>

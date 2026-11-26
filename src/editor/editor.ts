@@ -34,6 +34,8 @@ import {
   updateFurniture,
 } from '../model/furniture';
 import { History } from './history';
+import type { FlowReport } from '../sim/scenarios';
+import { PHASE_BLOCKED, PHASE_DWELL } from '../sim/engine';
 
 export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'room' | 'furniture' | 'erase';
 export type DoorKind = 'door' | 'double-door';
@@ -77,6 +79,7 @@ const COLORS = {
   selected: '#ffcf70',
   hover: 'rgba(255, 207, 112, 0.5)',
   clearance: 'rgba(255, 255, 255, 0.06)',
+  person: '#5ec8ff',
 };
 
 type Drag =
@@ -100,6 +103,16 @@ export class Editor {
   furnitureRot: Rotation = 0;
   /** Selected furniture piece id. */
   selectedFurnitureId: string | null = null;
+  /** Latest flow simulation (cleared when the design changes). */
+  sim: FlowReport | null = null;
+  /** Playback position in sim seconds. */
+  simTime = 0;
+  simPlaying = false;
+  simSpeed = 4;
+  showHeat = true;
+  private simLast = 0;
+  private simFrame = 0;
+
   /** Touch-friendly stand-in for right-click: the current tool removes instead of adds. */
   removeMode = false;
 
@@ -305,6 +318,52 @@ export class Editor {
   // Internals
   // -------------------------------------------------------------------------
 
+  // --- Simulation playback ---------------------------------------------------
+
+  showSim(report: FlowReport): void {
+    this.sim = report;
+    this.simTime = 0;
+    if (report.result) this.playSim();
+    else this.changed(false);
+  }
+
+  playSim(): void {
+    const r = this.sim?.result;
+    if (!r) return;
+    if (this.simTime >= r.duration) this.simTime = 0;
+    this.simPlaying = true;
+    this.simLast = 0;
+    if (!this.simFrame) this.simFrame = requestAnimationFrame(this.simLoop);
+    this.changed(false);
+  }
+
+  pauseSim(): void {
+    this.simPlaying = false;
+    this.changed(false);
+  }
+
+  /** Close the results (they also go away on any design edit). */
+  stopSim(): void {
+    this.sim = null;
+    this.simPlaying = false;
+    this.changed(false);
+  }
+
+  private simLoop = (ts: number): void => {
+    this.simFrame = 0;
+    const r = this.sim?.result;
+    if (!r || !this.simPlaying) return;
+    if (this.simLast) this.simTime += ((ts - this.simLast) / 1000) * this.simSpeed;
+    this.simLast = ts;
+    if (this.simTime >= r.duration) {
+      this.simTime = r.duration;
+      this.simPlaying = false;
+    } else {
+      this.simFrame = requestAnimationFrame(this.simLoop);
+    }
+    this.changed(false);
+  };
+
   // --- Rooms ---------------------------------------------------------------
 
   getRooms(): RoomMap {
@@ -341,7 +400,10 @@ export class Editor {
   }
 
   private changed(designChanged: boolean): void {
-    if (designChanged) this.rev++;
+    if (designChanged) {
+      this.rev++;
+      if (this.sim) this.stopSim();
+    }
     if (this.selectedCell && !this.design.footprint.has(this.selectedCell)) this.selectedCell = null;
     if (this.selectedFurnitureId && !this.selectedFurniture()) this.selectedFurnitureId = null;
     this.requestRender();
@@ -759,6 +821,7 @@ export class Editor {
     ctx.translate(cam.ox, cam.oy);
     ctx.scale(s, s);
     this.drawOpenAreas();
+    this.drawHeat();
     this.drawFurnitureLayer('floor');
     if (this.tool === 'furniture') this.drawClearances();
     this.drawWallFinishes();
@@ -767,6 +830,7 @@ export class Editor {
     this.drawFurnitureLayer('object');
     this.drawFurnitureLayer('wall');
     this.drawFurnitureLayer('ceiling');
+    this.drawSimPeople();
     this.drawRoomOutlines();
     this.drawPreview();
     ctx.restore();
@@ -1015,6 +1079,58 @@ export class Editor {
       ctx.beginPath();
       ctx.arc(leaf.hx, leaf.hy, leaf.r, Math.min(aClosed, aOpen), Math.max(aClosed, aOpen));
       ctx.lineWidth = lw;
+      ctx.stroke();
+    }
+  }
+
+  /** Where people spent their time: yellow (some) to red (a lot). */
+  private drawHeat(): void {
+    const sim = this.sim;
+    if (!sim?.result || !this.showHeat) return;
+    const { ctx } = this;
+    const { heat } = sim.result;
+    const g = sim.grid;
+    let max = 0;
+    for (let i = 0; i < heat.length; i++) {
+      if (heat[i] > max && this.design.footprint.has(cellKey(i % g.w, Math.floor(i / g.w)))) max = heat[i];
+    }
+    if (max <= 0) return;
+    for (let i = 0; i < heat.length; i++) {
+      if (heat[i] <= 0) continue;
+      const v = Math.min(1, Math.sqrt(heat[i] / max));
+      // Hue 55 (yellow) down to 0 (red) as it gets busier.
+      ctx.fillStyle = `hsla(${Math.round(55 - 55 * v)}, 95%, 55%, ${0.15 + 0.5 * v})`;
+      ctx.fillRect(i % g.w, Math.floor(i / g.w), 1, 1);
+    }
+    // Ring the worst bottleneck.
+    const hot = sim.issues.find((iss) => iss.cell !== undefined)?.cell;
+    if (hot !== undefined) {
+      ctx.strokeStyle = COLORS.bad;
+      ctx.lineWidth = 2.5 / this.cam.scale;
+      ctx.beginPath();
+      ctx.arc((hot % g.w) + 0.5, Math.floor(hot / g.w) + 0.5, 1.6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /** Simulated people at the current playback time. */
+  private drawSimPeople(): void {
+    const r = this.sim?.result;
+    if (!r || r.frameCount === 0) return;
+    const { ctx } = this;
+    const f = Math.min(r.frameCount - 1, Math.floor(this.simTime / r.dt));
+    ctx.lineWidth = 1.5 / this.cam.scale;
+    ctx.strokeStyle = 'rgba(8, 16, 28, 0.9)';
+    for (let a = 0; a < r.agentCount; a++) {
+      const o = (f * r.agentCount + a) * 2;
+      const x = r.frames[o];
+      if (Number.isNaN(x)) continue;
+      const y = r.frames[o + 1];
+      const phase = r.phases[f * r.agentCount + a];
+      ctx.fillStyle = phase === PHASE_BLOCKED ? COLORS.bad : phase === PHASE_DWELL ? COLORS.warn : COLORS.person;
+      ctx.beginPath();
+      ctx.arc(x, y, 0.38, 0, Math.PI * 2);
+      ctx.fill();
       ctx.stroke();
     }
   }

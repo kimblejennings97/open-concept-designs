@@ -4,6 +4,8 @@ import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint
 import { CELL_M, fmtMeters } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
+import { type SampleId, sampleDesign } from './model/samples';
+import { type SimBuilding, inferBuilding, simulateFlow } from './sim/scenarios';
 import {
   type BuildingType,
   CATALOG,
@@ -41,6 +43,7 @@ const el = {
   redo: $<HTMLButtonElement>('btn-redo'),
   stats: $('stats'),
   cost: $('cost'),
+  sim: $('sim'),
   hint: $('status-hint'),
   pos: $('status-pos'),
   dlgNew: $<HTMLDialogElement>('dlg-new'),
@@ -413,6 +416,134 @@ function renderStats(): void {
   dl(el.cost, rows);
 }
 
+// ---------------------------------------------------------------------------
+// Simulation panel
+// ---------------------------------------------------------------------------
+
+let simChoice: SimBuilding | 'auto' = 'auto';
+let lastSimKey = '';
+let simTimeEl: HTMLElement | null = null;
+
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function button(text: string, onclick: () => void, cls = '', pressed?: boolean): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = text;
+  if (cls) b.className = cls;
+  if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed));
+  b.onclick = onclick;
+  return b;
+}
+
+function runSimulation(): void {
+  const rooms = editor.getRooms();
+  const building = simChoice === 'auto' ? inferBuilding(editor.design, rooms) : simChoice;
+  editor.showSim(simulateFlow(editor.design, rooms, building));
+}
+
+function renderSim(): void {
+  const sim = editor.sim;
+  simTimeEl = null;
+  if (!sim) {
+    const label = document.createElement('label');
+    label.className = 'field';
+    label.textContent = 'Simulate as';
+    const sel = document.createElement('select');
+    const auto = inferBuilding(editor.design, editor.getRooms());
+    sel.append(new Option(`Auto (${auto})`, 'auto', false, simChoice === 'auto'));
+    sel.append(new Option('House: morning rush', 'house', false, simChoice === 'house'));
+    sel.append(new Option('Store: shoppers', 'store', false, simChoice === 'store'));
+    sel.onchange = () => {
+      simChoice = sel.value as SimBuilding | 'auto';
+    };
+    label.append(sel);
+    el.sim.replaceChildren(
+      note('Watch people use your building, then see where they got stuck.'),
+      label,
+      button('Run simulation', runSimulation, 'primary wide-btn'),
+    );
+    return;
+  }
+
+  const score = document.createElement('div');
+  score.className = 'score';
+  score.innerHTML = `<span class="num">${sim.score}</span><span class="of">/100 flow</span>`;
+  score.classList.add(sim.score >= 75 ? 'good' : sim.score >= 50 ? 'ok' : 'poor');
+
+  const stats = document.createElement('dl');
+  stats.className = 'stats-dl';
+  dl(stats, [
+    ['People', `${sim.finished} of ${sim.people} made it`],
+    ['Average trip', `${Math.round(sim.avgTripS)} s`],
+    ['Average wait', `${Math.round(sim.avgWaitS)} s`],
+    ['Average walk', `${Math.round(sim.avgWalkM)} m`],
+  ]);
+
+  const issues = document.createElement('ol');
+  issues.className = 'issues';
+  for (const iss of sim.issues.slice(0, 3)) {
+    const li = document.createElement('li');
+    li.textContent = iss.text;
+    issues.append(li);
+  }
+  if (!sim.issues.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No problems spotted. Nice layout!';
+    issues.append(li);
+  }
+
+  const parts: HTMLElement[] = [score, stats, issues];
+  const r = sim.result;
+  if (r) {
+    const controls = document.createElement('div');
+    controls.className = 'sim-controls';
+    controls.append(
+      button(editor.simPlaying ? 'Pause' : r && editor.simTime >= r.duration ? 'Replay' : 'Play', () =>
+        editor.simPlaying ? editor.pauseSim() : editor.playSim(),
+      ),
+    );
+    for (const sp of [1, 4, 16]) {
+      controls.append(
+        button(`${sp}×`, () => {
+          editor.simSpeed = sp;
+          refreshUi();
+        }, '', editor.simSpeed === sp),
+      );
+    }
+    simTimeEl = document.createElement('span');
+    simTimeEl.className = 'sim-time';
+    const extra = document.createElement('div');
+    extra.className = 'sim-controls';
+    extra.append(
+      button('Heatmap', () => {
+        editor.showHeat = !editor.showHeat;
+        refreshUi();
+      }, '', editor.showHeat),
+      simTimeEl,
+    );
+    parts.push(controls, extra);
+  }
+  const again = document.createElement('div');
+  again.className = 'sim-controls';
+  again.append(button('Run again', runSimulation), button('Close', () => editor.stopSim()));
+  parts.push(again, note('Blue = walking, amber = busy, red = stuck. Editing the design clears the results.'));
+  el.sim.replaceChildren(...parts);
+}
+
+function refreshSim(): void {
+  const sim = editor.sim;
+  const atEnd = !!sim?.result && editor.simTime >= sim.result.duration;
+  const key = sim
+    ? `${sim.score}|${sim.people}|${editor.simPlaying}|${atEnd}|${editor.simSpeed}|${editor.showHeat}`
+    : `none|${editor.design.id}|${editor.getRooms().rooms.length}`;
+  if (key !== lastSimKey) {
+    lastSimKey = key;
+    renderSim();
+  }
+  if (simTimeEl && sim?.result) simTimeEl.textContent = `${fmtClock(editor.simTime)} / ${fmtClock(sim.result.duration)}`;
+}
+
 let lastTool: ToolId | null = null;
 let lastOptionsKey = '';
 
@@ -429,6 +560,7 @@ function refreshUi(designChanged = false): void {
     renderOptions();
   }
   if (designChanged) renderStats();
+  refreshSim();
   el.undo.disabled = !editor.history.canUndo;
   el.redo.disabled = !editor.history.canRedo;
   if (document.activeElement !== el.name) el.name.value = editor.design.name;
@@ -463,7 +595,14 @@ el.dlgNew.addEventListener('close', () => {
   const toCells = (v: FormDataEntryValue | null) =>
     Math.min(200, Math.max(10, Math.round(Number(v) / CELL_M) || 40));
   const name = String(f.get('name') ?? '').trim() || 'Untitled design';
-  const d = createDesign(name, toCells(f.get('w')), toCells(f.get('h')));
+  const start = String(f.get('start') ?? 'blank');
+  let d: Design;
+  if (start === 'house' || start === 'store') {
+    d = sampleDesign(start as SampleId);
+    if (name !== 'Untitled design') d.name = name;
+  } else {
+    d = createDesign(name, toCells(f.get('w')), toCells(f.get('h')));
+  }
   void switchTo(d).then(() => flushSave());
 });
 
@@ -594,7 +733,7 @@ async function loadInitialDesign(): Promise<Design> {
       console.warn('Could not load last design', err);
     }
   }
-  return createDesign('My first design');
+  return sampleDesign('house');
 }
 
 const editor = new Editor($<HTMLCanvasElement>('blueprint'), await loadInitialDesign());
