@@ -2,6 +2,9 @@ import './style.css';
 import { type DoorKind, Editor, TOOL_HINTS, type ToolId } from './editor/editor';
 import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, serialize, stats } from './model/design';
 import { CELL_M, fmtMeters } from './model/grid';
+import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
+import { computeCost, fmtMoney } from './model/cost';
+import { FLOOR_MATERIALS, type Material, ROOM_TYPES, WALL_FINISHES, roomType } from './data/catalog';
 import { deleteDesign, listDesigns, loadDesign, saveDesign } from './storage/db';
 import { getLastDesignId, setLastDesignId } from './storage/settings';
 
@@ -12,6 +15,7 @@ const TOOLS: Array<{ id: ToolId; label: string; key: string }> = [
   { id: 'wall', label: 'Wall', key: 'W' },
   { id: 'door', label: 'Door', key: 'D' },
   { id: 'window', label: 'Window', key: 'N' },
+  { id: 'room', label: 'Room', key: 'O' },
   { id: 'erase', label: 'Erase', key: 'E' },
 ];
 
@@ -23,6 +27,7 @@ const el = {
   undo: $<HTMLButtonElement>('btn-undo'),
   redo: $<HTMLButtonElement>('btn-redo'),
   stats: $('stats'),
+  cost: $('cost'),
   hint: $('status-hint'),
   pos: $('status-pos'),
   dlgNew: $<HTMLDialogElement>('dlg-new'),
@@ -124,36 +129,174 @@ function renderOptions(): void {
     };
     label.append(sel);
     el.options.append(h, label);
+  } else if (editor.tool === 'room') {
+    renderRoomPanel();
   }
+}
+
+function h2(text: string): HTMLHeadingElement {
+  const h = document.createElement('h2');
+  h.textContent = text;
+  return h;
+}
+
+function note(text: string, cls = 'note'): HTMLParagraphElement {
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = text;
+  return p;
+}
+
+function renderRoomPanel(): void {
+  const room = editor.selectedRoom();
+  if (!room) {
+    const rooms = editor.getRooms().rooms;
+    const open = rooms.filter((r) => !r.enclosed).length;
+    const unassigned = rooms.filter((r) => r.enclosed && !r.type).length;
+    el.options.append(h2('Room'), note('Click a room on the blueprint to select it.'));
+    if (rooms.length) {
+      el.options.append(
+        note(`${rooms.length} area${rooms.length === 1 ? '' : 's'} · ${unassigned} unassigned · ${open} not enclosed`),
+      );
+    }
+    return;
+  }
+
+  const type = roomType(room.type);
+  el.options.append(h2(type?.name ?? 'Room'), note(`${room.areaM2.toFixed(1)} m²`));
+  if (!room.enclosed) el.options.append(note('Not enclosed: add walls to close this area in.', 'note warn'));
+  if (type && room.areaM2 < type.minAreaM2) {
+    el.options.append(note(`Small for a ${type.name.toLowerCase()} (aim for ${type.minAreaM2} m²+).`, 'note warn'));
+  }
+
+  // Type
+  const typeLabel = document.createElement('label');
+  typeLabel.textContent = 'Type';
+  const sel = document.createElement('select');
+  sel.append(new Option('Unassigned', '', false, !room.type));
+  for (const [group, label] of [
+    ['house', 'House'],
+    ['store', 'Store'],
+  ] as const) {
+    const og = document.createElement('optgroup');
+    og.label = label;
+    for (const t of ROOM_TYPES.filter((t) => t.buildingTypes[0] === group)) {
+      og.append(new Option(t.name, t.id, false, t.id === room.type));
+    }
+    sel.append(og);
+  }
+  sel.onchange = () => editor.editSelectedRoom((d, r) => setRoomType(d, r, sel.value || null));
+  typeLabel.append(sel);
+  el.options.append(typeLabel);
+
+  // Floor & walls
+  el.options.append(
+    swatches('Floor', FLOOR_MATERIALS, roomFloor(editor.design, room), (id) =>
+      editor.editSelectedRoom((d, r) => setRoomFloor(d, r, id)),
+    ),
+  );
+  if (room.wallSides.length) {
+    el.options.append(
+      swatches('Walls', WALL_FINISHES, roomWalls(editor.design, room), (id) =>
+        editor.editSelectedRoom((d, r) => setRoomWalls(d, r, id)),
+      ),
+    );
+  }
+}
+
+function swatches(
+  title: string,
+  materials: readonly Material[],
+  current: string | null | 'mixed',
+  pick: (id: string | null) => void,
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'swatch-group';
+  const label = document.createElement('div');
+  label.className = 'swatch-title';
+  label.textContent = current === 'mixed' ? `${title} (mixed)` : title;
+  const list = document.createElement('div');
+  list.className = 'swatches';
+  const button = (id: string | null, name: string, color: string | null, price: string) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(current === id));
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    if (color) chip.style.background = color;
+    else chip.classList.add('none');
+    const n = document.createElement('span');
+    n.className = 'name';
+    n.textContent = name;
+    const p = document.createElement('span');
+    p.className = 'price';
+    p.textContent = price;
+    b.append(chip, n, p);
+    b.onclick = () => pick(id);
+    list.append(b);
+  };
+  button(null, 'Unfinished', null, '');
+  for (const m of materials) button(m.id, m.name, m.color, `$${m.costPerM2}/m²`);
+  wrap.append(label, list);
+  return wrap;
+}
+
+function roomSignature(room: Room | null): string {
+  if (!room) return `none:${editor.getRooms().rooms.length}`;
+  const d = editor.design;
+  return [room.cells[0], room.cells.length, room.enclosed, room.type, roomFloor(d, room), roomWalls(d, room)].join('|');
+}
+
+function dl(target: HTMLElement, rows: Array<[string, string, string?]>): void {
+  target.replaceChildren(
+    ...rows.flatMap(([k, v, cls]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.textContent = v;
+      if (cls) {
+        dt.className = cls;
+        dd.className = cls;
+      }
+      return [dt, dd];
+    }),
+  );
 }
 
 function renderStats(): void {
   const s = stats(editor.design);
   const d = editor.design;
-  const rows: Array<[string, string]> = [
+  const rooms = editor.getRooms().rooms;
+  dl(el.stats, [
     ['Lot', `${fmtMeters(d.lotW)} × ${fmtMeters(d.lotH)}`],
     ['Footprint', `${s.footprintM2.toFixed(1)} m²`],
+    ['Rooms', String(rooms.filter((r) => r.enclosed).length)],
     ['Exterior walls', `${s.exteriorWallM.toFixed(1)} m`],
     ['Interior walls', `${s.interiorWallM.toFixed(1)} m`],
     ['Doors', String(s.doors)],
     ['Windows', String(s.windows)],
-  ];
-  el.stats.replaceChildren(
-    ...rows.flatMap(([k, v]) => {
-      const dt = document.createElement('dt');
-      dt.textContent = k;
-      const dd = document.createElement('dd');
-      dd.textContent = v;
-      return [dt, dd];
-    }),
-  );
+  ]);
+
+  const c = computeCost(d, rooms);
+  const rows: Array<[string, string, string?]> = [];
+  for (const [bucket, label] of [
+    ['structure', 'Structure'],
+    ['systems', 'Systems'],
+    ['finishes', 'Finishes'],
+  ] as const) {
+    rows.push([label, fmtMoney(c[bucket]), 'bucket']);
+    for (const line of c.lines.filter((l) => l.bucket === bucket)) rows.push([line.label, fmtMoney(line.amount), 'line']);
+  }
+  rows.push(['Total', fmtMoney(c.total), 'total']);
+  dl(el.cost, rows);
 }
 
 let lastTool: ToolId | null = null;
 let lastOptionsKey = '';
 
 function refreshUi(designChanged = false): void {
-  const optionsKey = `${editor.tool}|${editor.doorKind}|${editor.windowLen}`;
+  const roomKey = editor.tool === 'room' ? roomSignature(editor.selectedRoom()) : '';
+  const optionsKey = `${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}`;
   if (editor.tool !== lastTool) {
     lastTool = editor.tool;
     renderTools();
@@ -286,6 +429,8 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'Space') {
     e.preventDefault();
     editor.setSpaceHeld(true);
+  } else if (key === 'escape') {
+    editor.clearSelection();
   } else if (key === 'home') {
     editor.fitView();
   } else if (key === 'r') {

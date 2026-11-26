@@ -1,0 +1,18 @@
+{
+  "wallHeightM": 2.7,
+  "structure": {
+    "foundationAndRoofPerM2": 1100,
+    "exteriorWallPerM": 650,
+    "interiorWallPerM": 250
+  },
+  "openings": {
+    "door": { "exterior": 1200, "interior": 450 },
+    "double-door": { "exterior": 2400, "interior": 900 },
+    "windowPerM": 400
+  },
+  "systems": {
+    "plumbingPerRoom": 6000,
+    "hvacBase": 5000,
+    "hvacPerM2": 35
+  }
+}

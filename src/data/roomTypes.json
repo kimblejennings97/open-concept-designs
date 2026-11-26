@@ -1,0 +1,16 @@
+[
+  { "id": "bedroom", "name": "Bedroom", "buildingTypes": ["house"], "plumbing": false, "minAreaM2": 9 },
+  { "id": "bathroom", "name": "Bathroom", "buildingTypes": ["house"], "plumbing": true, "minAreaM2": 3.5 },
+  { "id": "kitchen", "name": "Kitchen", "buildingTypes": ["house"], "plumbing": true, "minAreaM2": 7 },
+  { "id": "living", "name": "Living room", "buildingTypes": ["house"], "plumbing": false, "minAreaM2": 12 },
+  { "id": "dining", "name": "Dining room", "buildingTypes": ["house"], "plumbing": false, "minAreaM2": 8 },
+  { "id": "hallway", "name": "Hallway", "buildingTypes": ["house", "store"], "plumbing": false, "minAreaM2": 0 },
+  { "id": "closet", "name": "Closet", "buildingTypes": ["house"], "plumbing": false, "minAreaM2": 0 },
+  { "id": "laundry", "name": "Laundry", "buildingTypes": ["house"], "plumbing": true, "minAreaM2": 3 },
+  { "id": "garage", "name": "Garage", "buildingTypes": ["house"], "plumbing": false, "minAreaM2": 18 },
+  { "id": "sales-floor", "name": "Sales floor", "buildingTypes": ["store"], "plumbing": false, "minAreaM2": 30 },
+  { "id": "checkout", "name": "Checkout area", "buildingTypes": ["store"], "plumbing": false, "minAreaM2": 6 },
+  { "id": "stockroom", "name": "Stockroom", "buildingTypes": ["store"], "plumbing": false, "minAreaM2": 8 },
+  { "id": "restroom", "name": "Restroom", "buildingTypes": ["store"], "plumbing": true, "minAreaM2": 3.5 },
+  { "id": "office", "name": "Office", "buildingTypes": ["store"], "plumbing": false, "minAreaM2": 6 }
+]

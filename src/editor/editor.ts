@@ -16,10 +16,12 @@ import {
   edgeInLot,
   newId,
 } from '../model/design';
-import { type Edge, edgeKey, fmtMeters, lineEdges, nearestEdge, parseEdge } from '../model/grid';
+import { type Edge, cellKey, edgeKey, fmtMeters, lineEdges, nearestEdge, parseCell, parseEdge } from '../model/grid';
+import { type Room, type RoomMap, findRooms, parseSideKey } from '../model/rooms';
+import { floorMaterial, roomType, wallFinish } from '../data/catalog';
 import { History } from './history';
 
-export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'erase';
+export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'room' | 'erase';
 export type DoorKind = 'door' | 'double-door';
 
 export const TOOL_HINTS: Record<ToolId, string> = {
@@ -27,6 +29,7 @@ export const TOOL_HINTS: Record<ToolId, string> = {
   wall: 'Drag between grid points to draw a wall. Right-drag (or Shift-drag) to remove walls.',
   door: 'Click a wall to place a door. R flips the swing. Right-click a door to remove it.',
   window: 'Click an exterior wall to place a window. [ and ] change the width. Right-click to remove.',
+  room: 'Click a room to select it, then set its type, flooring and wall finish in the sidebar. Esc deselects.',
   erase: 'Click or drag over doors, windows and walls to remove them.',
 };
 
@@ -52,6 +55,12 @@ const COLORS = {
   badFill: 'rgba(255, 105, 105, 0.22)',
   labelBg: 'rgba(8, 16, 28, 0.85)',
   labelText: '#e8f0fb',
+  labelHalo: 'rgba(8, 16, 28, 0.8)',
+  muted: '#9fb2cc',
+  warn: '#ffcf70',
+  openHatch: 'rgba(255, 207, 112, 0.35)',
+  selected: '#ffcf70',
+  hover: 'rgba(255, 207, 112, 0.5)',
 };
 
 type Drag =
@@ -86,6 +95,11 @@ export class Editor {
   private spaceHeld = false;
   private shiftHeld = false;
   private frame = 0;
+  /** Bumped on every design edit; keys the room cache. */
+  private rev = 0;
+  private roomCache: { rev: number; map: RoomMap } | null = null;
+  /** A cell inside the selected room (cells survive edits better than room objects). */
+  private selectedCell: string | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement, design: Design) {
     const ctx = canvas.getContext('2d');
@@ -119,6 +133,8 @@ export class Editor {
   setDesign(d: Design): void {
     this.design = d;
     this.drag = null;
+    this.selectedCell = null;
+    this.rev++;
     this.history.clear();
     this.fitView();
     this.changed(false);
@@ -189,12 +205,44 @@ export class Editor {
   // Internals
   // -------------------------------------------------------------------------
 
+  // --- Rooms ---------------------------------------------------------------
+
+  getRooms(): RoomMap {
+    if (!this.roomCache || this.roomCache.rev !== this.rev) {
+      this.roomCache = { rev: this.rev, map: findRooms(this.design) };
+    }
+    return this.roomCache.map;
+  }
+
+  selectedRoom(): Room | null {
+    if (!this.selectedCell) return null;
+    return this.getRooms().byCell.get(this.selectedCell) ?? null;
+  }
+
+  clearSelection(): void {
+    if (!this.selectedCell) return;
+    this.selectedCell = null;
+    this.changed(false);
+  }
+
+  /** Apply an edit to the selected room as one undoable step. */
+  editSelectedRoom(fn: (d: Design, room: Room) => boolean): void {
+    const room = this.selectedRoom();
+    if (room) this.mutate((d) => fn(d, room));
+  }
+
+  private roomAt(wx: number, wy: number): Room | undefined {
+    return this.getRooms().byCell.get(cellKey(Math.floor(wx), Math.floor(wy)));
+  }
+
   private replaceKeepingHistory(s: string): void {
     this.design = restore(s);
     this.changed(true);
   }
 
   private changed(designChanged: boolean): void {
+    if (designChanged) this.rev++;
+    if (this.selectedCell && !this.design.footprint.has(this.selectedCell)) this.selectedCell = null;
     this.requestRender();
     this.onChange(designChanged);
   }
@@ -279,6 +327,11 @@ export class Editor {
         }
         break;
       }
+      case 'room': {
+        const room = this.roomAt(p.wx, p.wy);
+        this.selectedCell = room ? cellKey(Math.floor(p.wx), Math.floor(p.wy)) : null;
+        break;
+      }
       case 'erase': {
         this.drag = { kind: 'erase', before: snapshot(this.design), changed: false, layer: null };
         this.eraseAt(p.wx, p.wy);
@@ -360,6 +413,7 @@ export class Editor {
       removeWalls(this.design, [key]);
       drag.layer = 'wall';
       drag.changed = true;
+      this.rev++; // rooms may have merged
     }
   }
 
@@ -420,13 +474,10 @@ export class Editor {
     ctx.fillStyle = COLORS.lot;
     ctx.fillRect(0, 0, d.lotW, d.lotH);
 
-    ctx.beginPath();
-    for (const k of d.footprint) {
-      const i = k.indexOf(',');
-      ctx.rect(Number(k.slice(0, i)), Number(k.slice(i + 1)), 1, 1);
-    }
+    cellsPath(ctx, d.footprint);
     ctx.fillStyle = COLORS.footprint;
     ctx.fill();
+    this.drawFloors();
     ctx.restore();
 
     this.drawGrid();
@@ -434,12 +485,127 @@ export class Editor {
     ctx.save();
     ctx.translate(cam.ox, cam.oy);
     ctx.scale(s, s);
+    this.drawOpenAreas();
+    this.drawWallFinishes();
     this.drawWalls();
     for (const op of d.openings) this.drawOpening(op, null);
+    this.drawRoomOutlines();
     this.drawPreview();
     ctx.restore();
 
+    this.drawRoomLabels();
     this.drawLabels();
+  }
+
+  /** Floor materials, grouped so each material is one fill. */
+  private drawFloors(): void {
+    const { ctx, design: d } = this;
+    const groups = new Map<string, string[]>();
+    for (const [cell, id] of d.floors) {
+      const list = groups.get(id);
+      if (list) list.push(cell);
+      else groups.set(id, [cell]);
+    }
+    ctx.globalAlpha = 0.55;
+    for (const [id, cells] of groups) {
+      const mat = floorMaterial(id);
+      if (!mat) continue;
+      cellsPath(ctx, cells);
+      ctx.fillStyle = mat.color;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Hatch areas that aren't fully walled in. */
+  private drawOpenAreas(): void {
+    const { ctx } = this;
+    for (const room of this.getRooms().rooms) {
+      if (room.enclosed) continue;
+      ctx.save();
+      cellsPath(ctx, room.cells);
+      ctx.clip();
+      const [x0, y0, x1, y1] = cellBounds(room.cells);
+      ctx.beginPath();
+      const h = y1 + 1 - y0;
+      for (let k = x0; k <= x1 + 1 + h; k++) {
+        ctx.moveTo(k, y0);
+        ctx.lineTo(k - h, y1 + 1);
+      }
+      ctx.strokeStyle = COLORS.openHatch;
+      ctx.lineWidth = 1.5 / this.cam.scale;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** A thin strip of finish color on the room-facing side of each finished wall. */
+  private drawWallFinishes(): void {
+    const { ctx, design: d } = this;
+    const openKeys = new Set(d.openings.flatMap((op) => openingEdges(op)));
+    const w = 0.16;
+    for (const [key, id] of d.wallFinishes) {
+      const fin = wallFinish(id);
+      const { edge, side } = parseSideKey(key);
+      if (!fin || openKeys.has(edge)) continue;
+      const t = wallKind(d, edge) === 'exterior' ? 0.5 : 0.3;
+      const e = parseEdge(edge);
+      ctx.fillStyle = fin.color;
+      if (e.o === 'h') ctx.fillRect(e.x, side === 1 ? e.y + t / 2 : e.y - t / 2 - w, 1, w);
+      else ctx.fillRect(side === 1 ? e.x + t / 2 : e.x - t / 2 - w, e.y, w, 1);
+    }
+  }
+
+  /** Outline the selected room (and the hovered one, with the Room tool). */
+  private drawRoomOutlines(): void {
+    const { ctx } = this;
+    const outline = (room: Room, color: string, px: number) => {
+      ctx.beginPath();
+      for (const k of room.boundary) {
+        const e = parseEdge(k);
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.o === 'h' ? e.x + 1 : e.x, e.o === 'h' ? e.y : e.y + 1);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = px / this.cam.scale;
+      ctx.lineCap = 'square';
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    };
+    const selected = this.selectedRoom();
+    if (this.tool === 'room' && this.pointer && !this.drag) {
+      const hover = this.roomAt(this.pointer.wx, this.pointer.wy);
+      if (hover && hover !== selected) outline(hover, COLORS.hover, 2);
+    }
+    if (selected) outline(selected, COLORS.selected, 3);
+  }
+
+  /** Room name and area at each room's middle. */
+  private drawRoomLabels(): void {
+    const { ctx, cam } = this;
+    if (cam.scale < 9) return;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const room of this.getRooms().rooms) {
+      if (room.cells.length < 4) continue;
+      const [lx, ly] = room.labelCell;
+      const x = (lx + 0.5) * cam.scale + cam.ox;
+      const y = (ly + 0.5) * cam.scale + cam.oy;
+      const type = roomType(room.type);
+      const title = !room.enclosed ? 'Not enclosed' : type ? type.name : 'Unassigned room';
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = COLORS.labelHalo;
+      ctx.fillStyle = !room.enclosed ? COLORS.warn : type ? COLORS.labelText : COLORS.muted;
+      ctx.strokeText(title, x, y - 7);
+      ctx.fillText(title, x, y - 7);
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = COLORS.muted;
+      const area = `${room.areaM2.toFixed(1)} m²`;
+      ctx.strokeText(area, x, y + 8);
+      ctx.fillText(area, x, y + 8);
+    }
+    ctx.textAlign = 'start';
   }
 
   private drawGrid(): void {
@@ -664,6 +830,31 @@ export class Editor {
   private toScreen(wx: number, wy: number): { x: number; y: number } {
     return { x: wx * this.cam.scale + this.cam.ox, y: wy * this.cam.scale + this.cam.oy };
   }
+}
+
+/** Build a path covering the given cells (one rect each; a single fill avoids seams). */
+function cellsPath(ctx: CanvasRenderingContext2D, cells: Iterable<string>): void {
+  ctx.beginPath();
+  for (const k of cells) {
+    const [x, y] = parseCell(k);
+    ctx.rect(x, y, 1, 1);
+  }
+}
+
+/** [minX, minY, maxX, maxY] over cell keys. */
+function cellBounds(cells: string[]): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const k of cells) {
+    const [x, y] = parseCell(k);
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0, y0, x1, y1];
 }
 
 function clamp(v: number, lo: number, hi: number): number {

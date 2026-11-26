@@ -1,0 +1,20 @@
+{
+  "floors": [
+    { "id": "concrete", "name": "Polished concrete", "color": "#8f969e", "costPerM2": 15, "tags": ["modern", "industrial"], "tier": 1 },
+    { "id": "vinyl", "name": "Vinyl plank", "color": "#c4a37c", "costPerM2": 35, "tags": ["modern"], "tier": 1 },
+    { "id": "carpet", "name": "Carpet", "color": "#7d7299", "costPerM2": 45, "tags": ["classic", "cozy"], "tier": 1 },
+    { "id": "tile", "name": "Ceramic tile", "color": "#d9d4c7", "costPerM2": 70, "tags": ["modern", "classic"], "tier": 1 },
+    { "id": "wood", "name": "Oak wood", "color": "#b07a45", "costPerM2": 85, "tags": ["rustic", "classic", "cozy"], "tier": 1 },
+    { "id": "marble", "name": "Marble", "color": "#ece9e4", "costPerM2": 220, "tags": ["luxury", "classic"], "tier": 3 }
+  ],
+  "walls": [
+    { "id": "paint-white", "name": "Paint, white", "color": "#f2efe8", "costPerM2": 12, "tags": ["modern"], "tier": 1 },
+    { "id": "paint-greige", "name": "Paint, greige", "color": "#b9ae9f", "costPerM2": 12, "tags": ["modern", "cozy"], "tier": 1 },
+    { "id": "paint-sage", "name": "Paint, sage", "color": "#9fb394", "costPerM2": 12, "tags": ["rustic", "cozy"], "tier": 1 },
+    { "id": "paint-navy", "name": "Paint, navy", "color": "#2f4468", "costPerM2": 12, "tags": ["classic", "modern"], "tier": 1 },
+    { "id": "wallpaper", "name": "Wallpaper", "color": "#c98f8f", "costPerM2": 30, "tags": ["classic", "cozy"], "tier": 1 },
+    { "id": "wall-tile", "name": "Wall tile", "color": "#cfe0e6", "costPerM2": 60, "tags": ["modern", "classic"], "tier": 1 },
+    { "id": "wood-panel", "name": "Wood panel", "color": "#8a5a32", "costPerM2": 70, "tags": ["rustic", "classic"], "tier": 1 },
+    { "id": "brick", "name": "Exposed brick", "color": "#9c4f3c", "costPerM2": 95, "tags": ["rustic", "industrial"], "tier": 1 }
+  ]
+}

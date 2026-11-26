@@ -8,6 +8,7 @@ import {
   parseCell,
   parseEdge,
 } from './grid';
+import { normalizeRoomData } from './rooms';
 
 // ---------------------------------------------------------------------------
 // Openings (doors & windows)
@@ -58,6 +59,12 @@ export interface Design {
   /** Edge keys that have a wall. */
   walls: Set<string>;
   openings: Opening[];
+  /** Floor material id per cell. */
+  floors: Map<string, string>;
+  /** Wall finish id per wall side ("<edgeKey>/0|1", see rooms.ts). */
+  wallFinishes: Map<string, string>;
+  /** Room type id per anchor cell (see rooms.ts). */
+  roomTypes: Map<string, string>;
 }
 
 /** JSON form, used for saving, undo snapshots, and (later) export/import. */
@@ -70,6 +77,9 @@ export interface DesignFile {
   footprint: string[];
   walls: string[];
   openings: Opening[];
+  floors?: Record<string, string>;
+  wallFinishes?: Record<string, string>;
+  roomTypes?: Record<string, string>;
 }
 
 export function newId(): string {
@@ -78,7 +88,26 @@ export function newId(): string {
 }
 
 export function createDesign(name = 'Untitled design', lotW = 40, lotH = 30): Design {
-  return { id: newId(), name, lotW, lotH, footprint: new Set(), walls: new Set(), openings: [] };
+  return {
+    id: newId(),
+    name,
+    lotW,
+    lotH,
+    footprint: new Set(),
+    walls: new Set(),
+    openings: [],
+    floors: new Map(),
+    wallFinishes: new Map(),
+    roomTypes: new Map(),
+  };
+}
+
+const sortedRecord = (m: Map<string, string>): Record<string, string> =>
+  Object.fromEntries([...m].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+
+function stringMap(v: unknown): Map<string, string> {
+  if (!v || typeof v !== 'object') return new Map();
+  return new Map(Object.entries(v as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'));
 }
 
 export function serialize(d: Design): DesignFile {
@@ -91,6 +120,9 @@ export function serialize(d: Design): DesignFile {
     footprint: [...d.footprint].sort(),
     walls: [...d.walls].sort(),
     openings: d.openings.map((o) => ({ ...o })),
+    floors: sortedRecord(d.floors),
+    wallFinishes: sortedRecord(d.wallFinishes),
+    roomTypes: sortedRecord(d.roomTypes),
   };
 }
 
@@ -109,6 +141,9 @@ export function deserialize(raw: unknown): Design {
     footprint: new Set(Array.isArray(f.footprint) ? f.footprint : []),
     walls: new Set(Array.isArray(f.walls) ? f.walls : []),
     openings: Array.isArray(f.openings) ? f.openings.map((o) => ({ ...o })) : [],
+    floors: stringMap(f.floors),
+    wallFinishes: stringMap(f.wallFinishes),
+    roomTypes: stringMap(f.roomTypes),
   };
   normalize(d);
   return d;
@@ -213,6 +248,7 @@ export function normalize(d: Design): void {
     if (openingProblem(probe, op) === null) kept.push(op);
   }
   d.openings = kept;
+  normalizeRoomData(d);
 }
 
 /** Fill (add) or clear (remove) the rectangle of cells between two corners, inclusive. */
