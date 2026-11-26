@@ -18,17 +18,21 @@
       </header>
 
       <div class="workspace">
-        <aside class="sidebar">
-          <section>
+        <aside class="sidebar" id="sidebar">
+          <section class="tools-section">
             <h2>Tools</h2>
             <div id="tools" class="tool-list"></div>
+            <div class="quick">
+              <button id="btn-undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
+              <button id="btn-redo" type="button" title="Redo (Ctrl+Y)">Redo</button>
+              <button id="btn-remove" type="button" aria-pressed="false" title="The current tool removes instead of adds (same as right-drag)">Remove</button>
+              <button id="btn-panel" type="button" class="mobile-only" aria-expanded="true">Panel</button>
+            </div>
           </section>
           <section id="options" class="options"></section>
           <section>
             <h2>Edit</h2>
             <div class="action-grid">
-              <button id="btn-undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
-              <button id="btn-redo" type="button" title="Redo (Ctrl+Y)">Redo</button>
               <button id="btn-enclose" type="button" class="wide" title="Add walls around the whole footprint">Wall the footprint</button>
               <button id="btn-fit" type="button" class="wide" title="Fit lot to screen (Home)">Fit view</button>
             </div>

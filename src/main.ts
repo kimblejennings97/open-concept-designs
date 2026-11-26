@@ -17,6 +17,9 @@ import {
 import { deleteDesign, listDesigns, loadDesign, saveDesign } from './storage/db';
 import { getLastDesignId, setLastDesignId } from './storage/settings';
 
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+const TOUCH_HINT = 'Two fingers pan and zoom. Toggle Remove to erase with any tool.';
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const TOOLS: Array<{ id: ToolId; label: string; key: string }> = [
@@ -430,7 +433,7 @@ function refreshUi(designChanged = false): void {
   el.redo.disabled = !editor.history.canRedo;
   if (document.activeElement !== el.name) el.name.value = editor.design.name;
 
-  el.hint.textContent = editor.message || TOOL_HINTS[editor.tool];
+  el.hint.textContent = editor.message || (IS_TOUCH ? TOUCH_HINT + ' ' : '') + TOOL_HINTS[editor.tool];
   el.hint.classList.toggle('warn', Boolean(editor.message));
   const p = editor.pointer;
   el.pos.textContent = p ? `${(p.wx * CELL_M).toFixed(1)} m, ${(p.wy * CELL_M).toFixed(1)} m` : '';
@@ -611,6 +614,18 @@ $('btn-new').onclick = openNewDialog;
 $('btn-open').onclick = () => void openOpenDialog();
 $('btn-open-close').onclick = () => el.dlgOpen.close();
 el.undo.onclick = () => editor.undo();
+const removeBtn = $<HTMLButtonElement>('btn-remove');
+removeBtn.onclick = () => {
+  editor.removeMode = !editor.removeMode;
+  removeBtn.setAttribute('aria-pressed', String(editor.removeMode));
+  refreshUi();
+};
+const panelBtn = $<HTMLButtonElement>('btn-panel');
+panelBtn.onclick = () => {
+  const collapsed = $('sidebar').classList.toggle('collapsed');
+  panelBtn.setAttribute('aria-expanded', String(!collapsed));
+  panelBtn.textContent = collapsed ? 'Show panel' : 'Panel';
+};
 el.redo.onclick = () => editor.redo();
 $('btn-enclose').onclick = () => editor.mutate(encloseFootprint);
 $('btn-fit').onclick = () => editor.fitView();

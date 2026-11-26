@@ -84,6 +84,7 @@ type Drag =
   | { kind: 'rect'; add: boolean; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'line'; add: boolean; ax: number; ay: number; bx: number; by: number }
   | { kind: 'erase'; before: string; changed: boolean; layer: 'furniture' | 'opening' | 'wall' | null }
+  | { kind: 'tap'; remove: boolean }
   | { kind: 'move'; id: string; offX: number; offY: number; before: string; ox: number; oy: number };
 
 export class Editor {
@@ -99,6 +100,8 @@ export class Editor {
   furnitureRot: Rotation = 0;
   /** Selected furniture piece id. */
   selectedFurnitureId: string | null = null;
+  /** Touch-friendly stand-in for right-click: the current tool removes instead of adds. */
+  removeMode = false;
 
   /** Short message about the current hover (e.g. why a door can't go here). */
   message = '';
@@ -123,6 +126,11 @@ export class Editor {
   private checkCache: { rev: number; map: Map<string, FurnitureCheck> } | null = null;
   /** A cell inside the selected room (cells survive edits better than room objects). */
   private selectedCell: string | null = null;
+  /** Pointers currently pressed (screen coords), for two-finger pan/zoom. */
+  private pointers = new Map<number, { x: number; y: number }>();
+  private pinch: { dist: number; mx: number; my: number; scale: number; ox: number; oy: number } | null = null;
+  /** After a pinch, ignore remaining fingers until all are lifted. */
+  private gestureLock = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, design: Design) {
     const ctx = canvas.getContext('2d');
@@ -137,7 +145,7 @@ export class Editor {
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    canvas.addEventListener('pointercancel', () => this.cancelDrag());
+    canvas.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
     canvas.addEventListener('pointerleave', () => {
       if (!this.drag) {
         this.pointer = null;
@@ -373,19 +381,36 @@ export class Editor {
   }
 
   private cancelDrag(): void {
-    const erased = this.drag?.kind === 'erase' && this.drag.changed;
-    if (erased && this.drag?.kind === 'erase') this.history.record(this.drag.before);
+    const drag = this.drag;
     this.drag = null;
+    if (drag?.kind === 'erase' && drag.changed) {
+      this.history.record(drag.before);
+      this.changed(true);
+    } else if (drag?.kind === 'move') {
+      updateFurniture(this.design, drag.id, { x: drag.ox, y: drag.oy });
+      this.rev++;
+    }
     this.updateCursor();
-    if (erased) this.changed(true);
-    else this.requestRender();
+    this.requestRender();
+  }
+
+  private screenPos(e: PointerEvent): { x: number; y: number } {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
   private onPointerDown(e: PointerEvent): void {
     this.canvas.setPointerCapture(e.pointerId);
+    this.pointers.set(e.pointerId, this.screenPos(e));
+    if (this.pointers.size === 2) {
+      this.startPinch();
+      return;
+    }
+    if (this.pointers.size > 2 || this.gestureLock) return;
+
     const p = this.toWorld(e);
     this.pointer = p;
-    const remove = e.button === 2 || e.shiftKey;
+    const remove = e.button === 2 || e.shiftKey || this.removeMode;
 
     if (e.button === 1 || (e.button === 0 && this.spaceHeld)) {
       this.drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: this.cam.ox, oy: this.cam.oy };
@@ -407,30 +432,10 @@ export class Editor {
         this.drag = { kind: 'line', add: !remove, ax: x, ay: y, bx: x, by: y };
         break;
       }
-      case 'door':
-      case 'window': {
-        if (remove) {
-          const op = this.openingUnder(p.wx, p.wy);
-          if (op) this.mutate((d) => removeOpening(d, op.id));
-        } else {
-          const op = this.openingPreview(p.wx, p.wy);
-          if (op && openingProblem(this.design, op) === null) {
-            this.mutate((d) => addOpening(d, { ...op, id: newId() }));
-          }
-        }
-        break;
-      }
-      case 'room': {
-        const room = this.roomAt(p.wx, p.wy);
-        this.selectedCell = room ? cellKey(Math.floor(p.wx), Math.floor(p.wy)) : null;
-        break;
-      }
       case 'furniture': {
         const hit = furnitureAt(this.design, cellKey(Math.floor(p.wx), Math.floor(p.wy)));
-        if (remove) {
-          if (hit) this.mutate((d) => removeFurniture(d, hit.id));
-        } else if (hit && !(this.armedItem && this.ghostOk(p.wx, p.wy))) {
-          // Clicking a placed piece picks it up (unless the armed item fits here, e.g. a rug under a sofa).
+        if (!remove && hit && !(this.armedItem && this.ghostOk(p.wx, p.wy))) {
+          // Pressing a placed piece picks it up (unless the armed item fits here, e.g. a rug under a sofa).
           this.selectedFurnitureId = hit.id;
           this.armedItem = null;
           this.drag = {
@@ -442,11 +447,8 @@ export class Editor {
             ox: hit.x,
             oy: hit.y,
           };
-        } else if (this.armedItem) {
-          const g = this.ghost(p.wx, p.wy);
-          if (g && this.ghostOk(p.wx, p.wy)) this.mutate((d) => addFurniture(d, { ...g, id: newId() }));
         } else {
-          this.selectedFurnitureId = null;
+          this.drag = { kind: 'tap', remove };
         }
         break;
       }
@@ -455,11 +457,93 @@ export class Editor {
         this.eraseAt(p.wx, p.wy);
         break;
       }
+      default:
+        // Doors, windows and room picking act when the pointer is released, so a finger
+        // can slide to the right spot first (and a second finger can start a pinch instead).
+        this.drag = { kind: 'tap', remove };
     }
+    this.updateMessage();
     this.changed(false);
   }
 
+  /** Click/tap actions, run on release at the final pointer position. */
+  private tapAt(wx: number, wy: number, remove: boolean): void {
+    switch (this.tool) {
+      case 'door':
+      case 'window': {
+        if (remove) {
+          const op = this.openingUnder(wx, wy);
+          if (op) this.mutate((d) => removeOpening(d, op.id));
+        } else {
+          const op = this.openingPreview(wx, wy);
+          if (op && openingProblem(this.design, op) === null) this.mutate((d) => addOpening(d, { ...op, id: newId() }));
+        }
+        break;
+      }
+      case 'room': {
+        const room = this.roomAt(wx, wy);
+        this.selectedCell = room ? cellKey(Math.floor(wx), Math.floor(wy)) : null;
+        break;
+      }
+      case 'furniture': {
+        const hit = furnitureAt(this.design, cellKey(Math.floor(wx), Math.floor(wy)));
+        if (remove) {
+          if (hit) this.mutate((d) => removeFurniture(d, hit.id));
+        } else if (this.armedItem) {
+          const g = this.ghost(wx, wy);
+          if (g && this.ghostOk(wx, wy)) this.mutate((d) => addFurniture(d, { ...g, id: newId() }));
+        } else {
+          this.selectedFurnitureId = null;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private startPinch(): void {
+    this.cancelDrag();
+    const [a, b] = [...this.pointers.values()];
+    this.pinch = {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      mx: (a.x + b.x) / 2,
+      my: (a.y + b.y) / 2,
+      scale: this.cam.scale,
+      ox: this.cam.ox,
+      oy: this.cam.oy,
+    };
+    this.gestureLock = true;
+    this.pointer = null;
+    this.message = '';
+    this.changed(false);
+  }
+
+  private updatePinch(): void {
+    const pinch = this.pinch;
+    if (!pinch) return;
+    const [a, b] = [...this.pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const scale = clamp(pinch.scale * (dist / pinch.dist), MIN_SCALE, MAX_SCALE);
+    // Keep the world point that started under the fingers' midpoint under the current midpoint.
+    const wx = (pinch.mx - pinch.ox) / pinch.scale;
+    const wy = (pinch.my - pinch.oy) / pinch.scale;
+    this.cam.scale = scale;
+    this.cam.ox = mx - wx * scale;
+    this.cam.oy = my - wy * scale;
+    this.requestRender();
+  }
+
   private onPointerMove(e: PointerEvent): void {
+    if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, this.screenPos(e));
+    if (this.pinch) {
+      if (this.pointers.size >= 2) this.updatePinch();
+      return;
+    }
+    if (this.gestureLock) return;
+
     const p = this.toWorld(e);
     this.pointer = p;
     const drag = this.drag;
@@ -491,10 +575,25 @@ export class Editor {
     this.changed(false);
   }
 
+  private onPointerCancel(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    this.pinch = null;
+    this.gestureLock = this.pointers.size > 0;
+    this.cancelDrag();
+  }
+
   private onPointerUp(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    if (this.pinch || this.gestureLock) {
+      if (this.pointers.size < 2) this.pinch = null;
+      if (this.pointers.size === 0) this.gestureLock = false;
+      return;
+    }
+
     const drag = this.drag;
     this.drag = null;
-    if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    const p = this.toWorld(e);
     if (drag?.kind === 'rect') {
       this.mutate((d) => paintFootprint(d, drag.x0, drag.y0, drag.x1, drag.y1, drag.add));
     } else if (drag?.kind === 'line') {
@@ -505,7 +604,11 @@ export class Editor {
       this.changed(true);
     } else if (drag?.kind === 'move') {
       this.finishMove(drag);
+    } else if (drag?.kind === 'tap') {
+      this.tapAt(p.wx, p.wy, drag.remove);
     }
+    // A finger has no hover: once it lifts, drop the ghost/preview.
+    if (e.pointerType === 'touch') this.pointer = null;
     this.updateCursor();
     this.changed(false);
   }
@@ -1099,12 +1202,12 @@ export class Editor {
     }
 
     if (this.tool === 'wall') {
-      ctx.fillStyle = this.shiftHeld ? COLORS.bad : COLORS.ok;
+      ctx.fillStyle = this.shiftHeld || this.removeMode ? COLORS.bad : COLORS.ok;
       ctx.beginPath();
       ctx.arc(Math.round(pointer.wx), Math.round(pointer.wy), 5 / this.cam.scale, 0, Math.PI * 2);
       ctx.fill();
     } else if (this.tool === 'footprint') {
-      ctx.strokeStyle = this.shiftHeld ? COLORS.bad : COLORS.ok;
+      ctx.strokeStyle = this.shiftHeld || this.removeMode ? COLORS.bad : COLORS.ok;
       ctx.lineWidth = lw;
       ctx.strokeRect(Math.floor(pointer.wx), Math.floor(pointer.wy), 1, 1);
     } else if (this.tool === 'door' || this.tool === 'window') {

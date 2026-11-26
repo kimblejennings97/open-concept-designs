@@ -388,3 +388,99 @@ dialog .row {
 .options .action-grid {
   margin-bottom: 12px;
 }
+
+/* Quick actions (undo/redo/remove) */
+.quick {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.quick button {
+  flex: 1;
+  padding: 6px 4px;
+}
+.quick button[aria-pressed='true'] {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #1b0505;
+  font-weight: 600;
+}
+.mobile-only {
+  display: none;
+}
+button,
+select {
+  touch-action: manipulation;
+}
+
+/* Phones and narrow windows: canvas on top, tools and panel underneath. */
+@media (max-width: 760px) {
+  #app {
+    height: 100dvh;
+  }
+  .topbar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .brand {
+    display: none;
+  }
+  .name-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+  .save-state {
+    display: none;
+  }
+  .topbar .spacer {
+    display: none;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+  .canvas-wrap {
+    order: 0;
+  }
+  .sidebar {
+    order: 1;
+    border-right: none;
+    border-top: 1px solid var(--line);
+    max-height: 45dvh;
+    padding: 8px;
+    gap: 12px;
+  }
+  .sidebar.collapsed > section:not(.tools-section) {
+    display: none;
+  }
+  .tools-section h2 {
+    display: none;
+  }
+  .tool-list {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 2px;
+  }
+  .tool-list button {
+    flex: none;
+    padding: 8px 12px;
+  }
+  .tool-list kbd {
+    display: none;
+  }
+  .mobile-only {
+    display: block;
+  }
+  .quick button {
+    padding: 8px 4px;
+  }
+  .statusbar {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  #status-pos {
+    display: none;
+  }
+}
