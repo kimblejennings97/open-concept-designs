@@ -1,8 +1,9 @@
 import type { DesignFile } from '../model/design';
 
 const DB_NAME = 'open-concept-designs';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const DESIGNS = 'designs';
+const SAVES = 'saves';
 
 export interface DesignRecord {
   id: string;
@@ -30,6 +31,7 @@ function openDb(): Promise<IDBDatabase> {
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(DESIGNS)) db.createObjectStore(DESIGNS, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(SAVES)) db.createObjectStore(SAVES, { keyPath: 'id' });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -41,11 +43,15 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-async function run<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function run<T>(
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest<T>,
+  storeName: string = DESIGNS,
+): Promise<T> {
   const db = await openDb();
   return new Promise<T>((resolve, reject) => {
-    const tx = db.transaction(DESIGNS, mode);
-    const req = fn(tx.objectStore(DESIGNS));
+    const tx = db.transaction(storeName, mode);
+    const req = fn(tx.objectStore(storeName));
     tx.oncomplete = () => resolve(req.result);
     tx.onerror = () => reject(tx.error ?? req.error);
     tx.onabort = () => reject(tx.error ?? new Error('Transaction aborted'));
@@ -71,4 +77,17 @@ export async function listDesigns(): Promise<DesignSummary[]> {
 
 export async function deleteDesign(id: string): Promise<void> {
   await run('readwrite', (s) => s.delete(id));
+}
+
+/** Game saves (career progress), keyed by id. */
+export async function saveGame<T extends { id: string }>(save: T): Promise<void> {
+  await run('readwrite', (s) => s.put(save), SAVES);
+}
+
+export async function loadGame<T>(id: string): Promise<T | undefined> {
+  return (await run('readonly', (s) => s.get(id), SAVES)) as T | undefined;
+}
+
+export async function deleteGame(id: string): Promise<void> {
+  await run('readwrite', (s) => s.delete(id), SAVES);
 }

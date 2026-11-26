@@ -10,6 +10,9 @@ import { BRIEFS, type Brief, getBrief } from './data/catalog';
 import { evaluateJob } from './game/evaluate';
 import { scoreAesthetics } from './model/scoring';
 import { renderBriefPanel, renderReport } from './ui/brief';
+import { type CareerSave, type Payout, newCareer, recordJob } from './game/career';
+import { renderOffice } from './ui/career';
+import { deleteGame, loadGame, saveGame } from './storage/db';
 import {
   type BuildingType,
   CATALOG,
@@ -52,6 +55,8 @@ const el = {
   brief: $('brief'),
   dlgReport: $<HTMLDialogElement>('dlg-report'),
   report: $('report'),
+  dlgCareer: $<HTMLDialogElement>('dlg-career'),
+  career: $('career'),
   hint: $('status-hint'),
   pos: $('status-pos'),
   dlgNew: $<HTMLDialogElement>('dlg-new'),
@@ -262,7 +267,7 @@ function swatches(
     list.append(b);
   };
   button(null, 'Unfinished', null, '');
-  for (const m of materials) button(m.id, m.name, m.color, `$${m.costPerM2}/m²`);
+  for (const m of materials) if (m.tier <= unlockedTier() || m.id === current) button(m.id, m.name, m.color, `${m.costPerM2}/m²`);
   wrap.append(label, list);
   return wrap;
 }
@@ -337,6 +342,7 @@ function renderFurniturePanel(): void {
 
   const items = CATALOG.filter(
     (i) =>
+      i.tier <= unlockedTier() &&
       (catalogBuilding === 'all' || i.buildingTypes.includes(catalogBuilding)) &&
       (!catalogRoom || i.roomTypes.length === 0 || i.roomTypes.includes(catalogRoom)),
   );
@@ -463,6 +469,97 @@ function submitDesign(brief: Brief): void {
   const group = document.getElementById('brief-options');
   for (const b of BRIEFS) group?.append(new Option(`${b.client}: ${b.title}`, `brief:${b.id}`));
 }
+
+// ---------------------------------------------------------------------------
+// Career
+// ---------------------------------------------------------------------------
+
+let career: CareerSave | null = null;
+let careerLoaded = false;
+
+async function loadCareer(): Promise<CareerSave | null> {
+  if (!careerLoaded) {
+    try {
+      career = (await loadGame<CareerSave>('career')) ?? null;
+    } catch {
+      career = null;
+    }
+    careerLoaded = true;
+  }
+  return career;
+}
+
+async function persistCareer(): Promise<void> {
+  if (!career) return;
+  try {
+    await saveGame(career);
+  } catch (err) {
+    console.error(err);
+    setSaveState('Career not saved: browser storage is unavailable', true);
+  }
+}
+
+/** Career jobs only offer what your tier has unlocked; other modes get everything. */
+function unlockedTier(): number {
+  return editor.design.mode === 'career' && career ? career.tier : Infinity;
+}
+
+async function openOffice(payout?: { payout: Payout; brief: Brief }): Promise<void> {
+  await loadCareer();
+  renderOffice(
+    el.career,
+    career,
+    {
+      start: (firm) => {
+        career = newCareer(firm);
+        void persistCareer();
+        void openOffice();
+      },
+      takeJob: (brief) => {
+        if (!career) return;
+        const d = designForBrief(brief);
+        d.mode = 'career';
+        career = { ...career, active: { briefId: brief.id, designId: d.id } };
+        void persistCareer();
+        el.dlgCareer.close();
+        void switchTo(d).then(() => flushSave());
+      },
+      continueJob: async () => {
+        const id = career?.active?.designId;
+        if (!id) return;
+        el.dlgCareer.close();
+        if (editor.design.id === id) return;
+        const file = await loadDesign(id).catch(() => undefined);
+        if (file) await switchTo(deserialize(file));
+      },
+      reset: () => {
+        if (!confirm('Reset your career? Your firm, money and stars will be lost (your designs stay).')) return;
+        career = null;
+        void deleteGame('career').catch(() => {});
+        void openOffice();
+      },
+      close: () => el.dlgCareer.close(),
+    },
+    payout ?? null,
+  );
+  if (!el.dlgCareer.open) el.dlgCareer.showModal();
+}
+
+reportExtras = (brief, ev) => {
+  if (editor.design.mode !== 'career' || !career) return {};
+  return {
+    collectLabel: ev.result.passed ? 'Collect fee & back to office' : 'Back to office',
+    collect: () => {
+      if (!career) return;
+      const payout = recordJob(career, ev.result);
+      career = payout.save;
+      if (ev.result.passed && career.active?.briefId === brief.id) career = { ...career, active: undefined };
+      void persistCareer();
+      el.dlgReport.close();
+      void openOffice({ payout, brief });
+    },
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Simulation panel
@@ -598,7 +695,7 @@ let lastOptionsKey = '';
 function refreshUi(designChanged = false): void {
   const roomKey = editor.tool === 'room' ? roomSignature(editor.selectedRoom()) : '';
   const furnKey = editor.tool === 'furniture' ? furnitureSignature() : '';
-  const optionsKey = `${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}`;
+  const optionsKey = `${editor.design.id}|${unlockedTier()}|${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}`;
   if (editor.tool !== lastTool) {
     lastTool = editor.tool;
     renderTools();
@@ -805,6 +902,7 @@ el.name.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === 'Escape') el.name.blur();
 });
 $('btn-new').onclick = openNewDialog;
+$('btn-career').onclick = () => void openOffice();
 $('btn-open').onclick = () => void openOpenDialog();
 $('btn-open-close').onclick = () => el.dlgOpen.close();
 el.undo.onclick = () => editor.undo();
@@ -829,6 +927,8 @@ window.addEventListener('beforeunload', () => {
 
 refreshUi(true);
 renderBrief();
+// First visit: invite the player to start a career.
+if (!getLastDesignId()) void loadCareer().then((c) => (c ? undefined : openOffice()));
 export const hooks = {
   setReportExtras(fn: typeof reportExtras) {
     reportExtras = fn;

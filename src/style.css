@@ -711,3 +711,101 @@ dialog.report {
   color: var(--accent);
   margin: 8px 0 2px;
 }
+
+/* Career office */
+dialog.office {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.office-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.office-head h2 {
+  margin: 0;
+}
+.office-stats {
+  text-align: right;
+}
+.office-stats .money {
+  font-size: 20px;
+  font-weight: 800;
+  color: #6ee696;
+  font-variant-numeric: tabular-nums;
+}
+dialog h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 16px 0 8px;
+}
+.offers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.offer {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.offer p {
+  margin: 4px 0;
+  color: var(--text);
+}
+.offer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stars-sm {
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.offer-terms {
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.offer .wide-btn {
+  margin-top: auto;
+}
+.payout,
+.promo,
+.active-job {
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.payout {
+  background: rgba(110, 230, 150, 0.12);
+  border: 1px solid rgba(110, 230, 150, 0.4);
+}
+.promo {
+  background: rgba(255, 207, 112, 0.14);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+}
+.active-job {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+@media (max-width: 760px) {
+  #btn-career {
+    padding: 6px 10px;
+  }
+}

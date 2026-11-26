@@ -84,7 +84,10 @@ beforeAll(async () => {
 });
 
 describe('UI smoke test', () => {
-  it('opens the sample house on first visit', () => {
+  it('opens the sample house and offers a career on first visit', async () => {
+    await tick(30);
+    expect(document.getElementById('career')!.textContent).toMatch(/Start your design firm/);
+    clickButton('Not now');
     expect((document.getElementById('design-name') as HTMLInputElement).value).toBe('Sample house');
     expect(document.getElementById('cost')!.textContent).toMatch(/Total/);
   });
@@ -194,6 +197,31 @@ describe('client briefs', () => {
     await tick(30);
     expect(document.getElementById('report')!.textContent).toMatch(/verdict/);
     clickButton('Watch the simulation');
+    await tick(30);
+  });
+});
+
+describe('career', () => {
+  it('starts a firm, takes the first job and collects a fee', async () => {
+    clickButton('Career');
+    await tick(30);
+    clickButton('Start career');
+    await tick(30);
+    expect(document.getElementById('career')!.textContent).toMatch(/Offer board/);
+    expect(document.getElementById('career')!.textContent).toMatch(/Starter home/);
+    clickButton('Take job');
+    await tick(60);
+    expect((document.getElementById('design-name') as HTMLInputElement).value).toBe('Starter home');
+    // Locked luxury items are hidden in career jobs.
+    clickButton('Furniture');
+    await tick();
+    expect(document.getElementById('options')!.textContent).not.toMatch(/Grand piano/);
+    clickButton('Submit to client');
+    await tick(30);
+    clickButton('Back to office');
+    await tick(30);
+    expect(document.getElementById('career')!.textContent).toMatch(/Starter home/);
+    clickButton('Continue job');
     await tick(30);
   });
 });

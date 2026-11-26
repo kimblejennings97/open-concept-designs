@@ -1,0 +1,25 @@
+{
+  "_comment": "Career tiers. Objectives must all be met to be promoted to the next tier. Kinds: jobs (distinct briefs finished with at least minStars), flow (best flow score on a building type).",
+  "tiers": [
+    {
+      "tier": 1,
+      "name": "Rookie",
+      "maxFloors": 1,
+      "unlocks": "Basic walls, flooring, doors and windows; houses and corner stores.",
+      "objectives": [
+        { "kind": "jobs", "minStars": 2, "count": 3, "text": "Finish 3 different jobs with 2+ stars" },
+        { "kind": "flow", "building": "store", "min": 80, "text": "Score 80+ flow on a store" }
+      ]
+    },
+    {
+      "tier": 2,
+      "name": "Local firm",
+      "maxFloors": 2,
+      "unlocks": "Stairs, more themes, mid-tier decor; larger houses, a retail boutique and a small cafe.",
+      "objectives": []
+    },
+    { "tier": 3, "name": "Regional", "maxFloors": 4, "unlocks": "Elevators, checkouts, bar and stage pieces; duplexes, grocery stores and nightclubs.", "objectives": [] },
+    { "tier": 4, "name": "Established", "maxFloors": 8, "unlocks": "Dock doors, conveyors and forklifts; apartment buildings, big-box retail and shipping.", "objectives": [] },
+    { "tier": 5, "name": "Elite", "maxFloors": 20, "unlocks": "Luxury decor and premium finishes; mansions, high-rises and flagship stores.", "objectives": [] }
+  ]
+}

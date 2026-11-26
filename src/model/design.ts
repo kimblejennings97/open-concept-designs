@@ -69,7 +69,11 @@ export interface Design {
   furniture: Furniture[];
   /** Client brief this design answers, if it is a job. */
   briefId?: string;
+  /** Which game mode it belongs to (save slots are separate per mode). */
+  mode?: DesignMode;
 }
+
+export type DesignMode = 'free' | 'career' | 'sandbox';
 
 /** JSON form, used for saving, undo snapshots, and (later) export/import. */
 export interface DesignFile {
@@ -86,6 +90,7 @@ export interface DesignFile {
   roomTypes?: Record<string, string>;
   furniture?: Furniture[];
   briefId?: string;
+  mode?: DesignMode;
 }
 
 export function newId(): string {
@@ -132,6 +137,7 @@ export function serialize(d: Design): DesignFile {
     roomTypes: sortedRecord(d.roomTypes),
     furniture: d.furniture.map((f) => ({ ...f })),
     ...(d.briefId ? { briefId: d.briefId } : {}),
+    ...(d.mode ? { mode: d.mode } : {}),
   };
 }
 
@@ -155,6 +161,7 @@ export function deserialize(raw: unknown): Design {
     roomTypes: stringMap(f.roomTypes),
     furniture: Array.isArray(f.furniture) ? f.furniture.map((x) => ({ ...x })) : [],
     briefId: typeof f.briefId === 'string' ? f.briefId : undefined,
+    mode: f.mode === 'career' || f.mode === 'sandbox' || f.mode === 'free' ? f.mode : undefined,
   };
   normalize(d);
   return d;
