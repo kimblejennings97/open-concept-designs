@@ -1,6 +1,6 @@
 import './style.css';
 import { type DoorKind, Editor, TOOL_HINTS, type ToolId } from './editor/editor';
-import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, serialize, stats } from './model/design';
+import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, newId, serialize, stats } from './model/design';
 import { CELL_M, fmtMeters } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
@@ -12,6 +12,8 @@ import { scoreAesthetics } from './model/scoring';
 import { renderBriefPanel, renderReport } from './ui/brief';
 import { type CareerKind, type CareerSave, type Payout, newCareer, recordJob } from './game/career';
 import { renderOffice } from './ui/career';
+import { isMuted, play, setMuted } from './ui/sound';
+import { nextTip } from './ui/coach';
 import { deleteGame, loadGame, saveGame } from './storage/db';
 import {
   type BuildingType,
@@ -467,6 +469,7 @@ function submitDesign(brief: Brief): void {
     ...reportExtras(brief, ev),
   });
   el.dlgReport.showModal();
+  play(ev.result.passed ? 'success' : 'fail');
 }
 
 {
@@ -647,6 +650,84 @@ $('btn-3d-close').onclick = close3D;
 $('btn-3d').onclick = () => void open3D();
 
 // ---------------------------------------------------------------------------
+// Tips, export / import
+// ---------------------------------------------------------------------------
+
+const coach = $('coach');
+const coachText = $('coach-text');
+const tipsBtn = $<HTMLButtonElement>('btn-tips');
+let tipsOn = (() => {
+  try {
+    return localStorage.getItem('ocd.tips') !== '0';
+  } catch {
+    return true;
+  }
+})();
+
+function setTips(on: boolean): void {
+  tipsOn = on;
+  try {
+    localStorage.setItem('ocd.tips', on ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+  tipsBtn.setAttribute('aria-pressed', String(on));
+  tipsBtn.textContent = on ? 'Tips: on' : 'Tips: off';
+  refreshCoach();
+}
+
+function refreshCoach(): void {
+  const tip = tipsOn && !editor.sim ? nextTip(editor, { simRun: simRunOnce }, IS_TOUCH) : null;
+  coach.hidden = !tip;
+  if (tip && coachText.textContent !== tip) coachText.textContent = tip;
+}
+
+$('btn-coach-hide').onclick = () => setTips(false);
+tipsBtn.onclick = () => setTips(!tipsOn);
+
+$('btn-export').onclick = () => {
+  const data = JSON.stringify(serialize(editor.design), null, 1);
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${editor.design.name.replace(/[^\w\- ]+/g, '').trim() || 'design'}.ocd.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const fileInput = $<HTMLInputElement>('file-import');
+$('btn-import').onclick = () => fileInput.click();
+fileInput.onchange = async () => {
+  const file = fileInput.files?.[0];
+  fileInput.value = '';
+  if (!file) return;
+  try {
+    const d = deserialize(JSON.parse(await file.text()));
+    d.id = newId(); // never overwrite an existing design
+    d.mode ??= 'free';
+    await switchTo(d);
+    await flushSave();
+  } catch (err) {
+    alert(`Couldn’t open that file: ${err instanceof Error ? err.message : String(err)}`);
+  }
+};
+{
+  const b = $<HTMLButtonElement>('btn-sound');
+  const sync = () => {
+    b.textContent = isMuted() ? '🔇' : '🔊';
+    b.setAttribute('aria-pressed', String(!isMuted()));
+  };
+  sync();
+  b.onclick = () => {
+    setMuted(!isMuted());
+    sync();
+    play('click');
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Simulation panel
 // ---------------------------------------------------------------------------
 
@@ -666,7 +747,10 @@ function button(text: string, onclick: () => void, cls = '', pressed?: boolean):
   return b;
 }
 
+let simRunOnce = false;
+
 function runSimulation(): void {
+  simRunOnce = true;
   const rooms = editor.getRooms();
   const building = simChoice === 'auto' ? inferBuilding(editor.design, rooms) : simChoice;
   editor.showSim(simulateFlow(editor.design, rooms, building));
@@ -795,6 +879,7 @@ function refreshUi(designChanged = false): void {
   }
   refreshSim();
   refresh3DBar();
+  refreshCoach();
   el.undo.disabled = !editor.history.canUndo;
   el.redo.disabled = !editor.history.canRedo;
   if (document.activeElement !== el.name) el.name.value = editor.design.name;
@@ -986,6 +1071,7 @@ async function loadInitialDesign(): Promise<Design> {
 }
 
 const editor = new Editor($<HTMLCanvasElement>('blueprint'), await loadInitialDesign());
+editor.sound = play;
 editor.onChange = (designChanged) => {
   refreshUi(designChanged);
   if (designChanged) scheduleSave();
@@ -1022,6 +1108,7 @@ window.addEventListener('beforeunload', () => {
   if (saveTimer !== undefined) void flushSave();
 });
 
+setTips(tipsOn);
 refreshUi(true);
 renderBrief();
 // First visit: invite the player to start a career.

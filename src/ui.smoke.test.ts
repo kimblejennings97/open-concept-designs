@@ -256,3 +256,43 @@ describe('sandbox career', () => {
     expect(document.getElementById('options')!.textContent).toMatch(/Grand piano/);
   });
 });
+
+describe('polish', () => {
+  it('shows tips for an empty design and hides them on request', async () => {
+    clickButton('New');
+    (document.getElementById('dlg-new') as HTMLDialogElement).close('ok');
+    await tick(60);
+    const coach = document.getElementById('coach')!;
+    expect(coach.hidden).toBe(false);
+    expect(document.getElementById('coach-text')!.textContent).toMatch(/Footprint/);
+    clickButton('Tips');
+    expect(coach.hidden).toBe(true);
+    clickButton('Tips');
+    expect(coach.hidden).toBe(false);
+  });
+
+  it('exports and re-imports a design', async () => {
+    let blob: Blob | null = null;
+    URL.createObjectURL = ((b: Blob) => {
+      blob = b;
+      return 'blob:x';
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = () => {};
+    clickButton('New');
+    const form = document.getElementById('form-new') as HTMLFormElement;
+    (form.elements.namedItem('start') as HTMLSelectElement).value = 'store';
+    (document.getElementById('dlg-new') as HTMLDialogElement).close('ok');
+    await tick(60);
+    clickButton('Export');
+    expect(blob).not.toBeNull();
+    const text = await blob!.text();
+    expect(JSON.parse(text).format).toBe('open-concept-design');
+
+    const input = document.getElementById('file-import') as HTMLInputElement;
+    const file = new File([text], 'store.ocd.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    await tick(80);
+    expect((document.getElementById('design-name') as HTMLInputElement).value).toBe('Sample store');
+  });
+});

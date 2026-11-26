@@ -121,6 +121,9 @@ export class Editor {
   /** Pointer position in cells, or null when off-canvas. */
   pointer: { wx: number; wy: number } | null = null;
 
+  /** Sound effect hook (set by the page). */
+  sound: (cue: 'place' | 'draw' | 'remove' | 'error') => void = () => {};
+
   /** Called after anything changes. `designChanged` is true when the design itself was edited. */
   onChange: (designChanged: boolean) => void = () => {};
 
@@ -179,6 +182,8 @@ export class Editor {
     this.drag = null;
     this.selectedCell = null;
     this.selectedFurnitureId = null;
+    this.sim = null; // results belong to the previous design
+    this.simPlaying = false;
     this.rev++;
     this.history.clear();
     this.fitView();
@@ -535,10 +540,15 @@ export class Editor {
       case 'window': {
         if (remove) {
           const op = this.openingUnder(wx, wy);
-          if (op) this.mutate((d) => removeOpening(d, op.id));
+          if (op && this.mutate((d) => removeOpening(d, op.id))) this.sound('remove');
         } else {
           const op = this.openingPreview(wx, wy);
-          if (op && openingProblem(this.design, op) === null) this.mutate((d) => addOpening(d, { ...op, id: newId() }));
+          if (op && openingProblem(this.design, op) === null) {
+            this.mutate((d) => addOpening(d, { ...op, id: newId() }));
+            this.sound('place');
+          } else if (op) {
+            this.sound('error');
+          }
         }
         break;
       }
@@ -550,10 +560,15 @@ export class Editor {
       case 'furniture': {
         const hit = furnitureAt(this.design, cellKey(Math.floor(wx), Math.floor(wy)));
         if (remove) {
-          if (hit) this.mutate((d) => removeFurniture(d, hit.id));
+          if (hit && this.mutate((d) => removeFurniture(d, hit.id))) this.sound('remove');
         } else if (this.armedItem) {
           const g = this.ghost(wx, wy);
-          if (g && this.ghostOk(wx, wy)) this.mutate((d) => addFurniture(d, { ...g, id: newId() }));
+          if (g && this.ghostOk(wx, wy)) {
+            this.mutate((d) => addFurniture(d, { ...g, id: newId() }));
+            this.sound('place');
+          } else {
+            this.sound('error');
+          }
         } else {
           this.selectedFurnitureId = null;
         }
@@ -657,13 +672,14 @@ export class Editor {
     this.drag = null;
     const p = this.toWorld(e);
     if (drag?.kind === 'rect') {
-      this.mutate((d) => paintFootprint(d, drag.x0, drag.y0, drag.x1, drag.y1, drag.add));
+      if (this.mutate((d) => paintFootprint(d, drag.x0, drag.y0, drag.x1, drag.y1, drag.add))) this.sound(drag.add ? 'draw' : 'remove');
     } else if (drag?.kind === 'line') {
       const keys = lineEdges(drag.ax, drag.ay, drag.bx, drag.by);
-      this.mutate((d) => (drag.add ? addWalls(d, keys) : removeWalls(d, keys)));
+      if (this.mutate((d) => (drag.add ? addWalls(d, keys) : removeWalls(d, keys)))) this.sound(drag.add ? 'draw' : 'remove');
     } else if (drag?.kind === 'erase' && drag.changed) {
       this.history.record(drag.before);
       this.changed(true);
+      this.sound('remove');
     } else if (drag?.kind === 'move') {
       this.finishMove(drag);
     } else if (drag?.kind === 'tap') {
@@ -684,10 +700,12 @@ export class Editor {
       updateFurniture(this.design, f.id, { x: drag.ox, y: drag.oy });
       this.rev++;
       this.message = "Can't move there: " + errors[0].toLowerCase();
+      this.sound('error');
       return;
     }
     this.history.record(drag.before);
     this.changed(true);
+    this.sound('place');
   }
 
   private onWheel(e: WheelEvent): void {
