@@ -63,6 +63,11 @@ const HEIGHTS: Record<string, number> = {
   'wall-shelf': 1.8, 'fridge-case': 2.0, 'freezer-chest': 0.85, 'ice-chest': 1.0, 'hot-food-case': 1.2,
   'display-table': 0.8, 'magazine-rack': 1.2, 'checkout-counter': 0.95, 'impulse-rack': 1.3,
   'coffee-station': 1.0, 'cart-corral': 0.8, 'stock-rack': 2.2, 'office-desk': 0.75, statue: 1.8, 'grand-piano': 1.0,
+  'table-2': 0.75, 'table-4': 0.75, 'high-top': 1.05, 'host-stand': 1.15, 'pro-range': 0.92, 'prep-table': 0.9,
+  'dish-station': 0.95, 'walk-in': 2.4, 'bar-counter': 1.1, 'back-bar': 2.1, 'dj-booth': 1.1, stage: 0.6, speaker: 1.7,
+  'coat-counter': 1.05, 'produce-stand': 0.9, 'deli-counter': 1.3, 'bakery-case': 1.3, 'self-checkout': 1.2, 'cart-bay': 1.0,
+  mailboxes: 1.6, 'package-lockers': 1.9, 'lobby-bench': 0.45, 'bike-rack': 0.9, treadmill: 1.4, 'weight-rack': 1.5,
+  'wine-rack': 2.0, 'indoor-pool': 0.12, 'hot-tub': 0.9,
 };
 
 function partsFor(item: CatalogItem): Part[] {
@@ -73,6 +78,7 @@ function partsFor(item: CatalogItem): Part[] {
 
   switch (item.id) {
     case 'bed-double':
+    case 'bed-king':
     case 'bed-single':
       return [
         all(0, 0.35, WOOD),
@@ -82,6 +88,8 @@ function partsFor(item: CatalogItem): Part[] {
         back(0.15, 0, 1.0, WOOD),
       ];
     case 'sofa':
+    case 'lounge-sofa':
+    case 'theater-seats':
     case 'armchair':
       return [all(0, 0.42), back(0.55, 0.42, 0.85), { u0: 0.04, v0: 0.04, u1: 0.4, v1: h - 0.04, y0: 0.42, y1: 0.62, color: c }, { u0: w - 0.4, v0: 0.04, u1: w - 0.04, v1: h - 0.04, y0: 0.42, y1: 0.62, color: c }];
     case 'toilet':
@@ -90,6 +98,9 @@ function partsFor(item: CatalogItem): Part[] {
     case 'desk':
     case 'office-desk':
     case 'coffee-table':
+    case 'table-2':
+    case 'table-4':
+    case 'high-top':
     case 'display-table': {
       const top = HEIGHTS[item.id] ?? 0.75;
       const leg = (u: number, v: number): Part => ({ u0: u, v0: v, u1: u + 0.12, v1: v + 0.12, y0: 0, y1: top - 0.04, color: WOOD });
@@ -98,18 +109,30 @@ function partsFor(item: CatalogItem): Part[] {
     case 'tv-stand':
       return [all(0, 0.5), { u0: 0.3, v0: 0.15, u1: w - 0.3, v1: 0.3, y0: 0.5, y1: 1.25, color: '#15181c' }];
     case 'stove':
-      return [all(0, 0.88, WHITE), all(0.88, 0.92, '#15181c')];
+    case 'pro-range':
+    case 'dish-station':
+      return [all(0, 0.88, item.id === 'stove' ? WHITE : c), all(0.88, 0.92, '#15181c')];
     case 'counter':
     case 'kitchen-sink':
     case 'island':
     case 'checkout-counter':
+    case 'bar-counter':
+    case 'prep-table':
+    case 'host-stand':
+    case 'coat-counter':
+    case 'dj-booth':
+    case 'self-checkout':
       return [all(0, (HEIGHTS[item.id] ?? 0.9) - 0.05, WOOD), all((HEIGHTS[item.id] ?? 0.9) - 0.05, HEIGHTS[item.id] ?? 0.9, c, 0)];
     case 'fridge-case':
+    case 'deli-counter':
+    case 'bakery-case':
     case 'shower':
       return [all(0, HEIGHTS[item.id], c), { u0: 0.1, v0: h - 0.12, u1: w - 0.1, v1: h - 0.04, y0: 0.15, y1: HEIGHTS[item.id] - 0.15, color: GLASS }];
     case 'shelf-aisle':
     case 'wall-shelf':
     case 'stock-rack':
+    case 'back-bar':
+    case 'wine-rack':
     case 'bookshelf': {
       const top = HEIGHTS[item.id];
       const parts: Part[] = [all(0, 0.12, DARK)];
@@ -131,6 +154,13 @@ function partsFor(item: CatalogItem): Part[] {
       return [{ u0: 0.4, v0: 0.4, u1: w - 0.4, v1: h - 0.4, y0: 0, y1: 1.75, color: c }];
     case 'grand-piano':
       return [all(0.65, 1.0, c), back(1.0, 0, 1.0, c)];
+    case 'booth':
+      return [all(0, 0.45), back(0.6, 0.45, 1.2), { u0: 0.5, v0: 0.75, u1: w - 0.5, v1: h - 0.2, y0: 0.72, y1: 0.76, color: WOOD }];
+    case 'indoor-pool':
+    case 'hot-tub':
+      return [all(0, HEIGHTS[item.id] ?? 0.12, '#d9dde0', 0), all(0, (HEIGHTS[item.id] ?? 0.12) + 0.01, c, 0.25)];
+    case 'treadmill':
+      return [all(0, 0.2, DARK), { u0: 0.1, v0: 0.05, u1: w - 0.1, v1: 0.3, y0: 0.2, y1: 1.4, color: c }];
   }
   if (item.layer === 'floor') return [all(0, 0.02, c, 0.05)];
   if (item.layer === 'wall') return [back(0.08, item.id === 'mirror' ? 1.0 : 1.2, 1.8, c)];

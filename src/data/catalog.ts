@@ -8,7 +8,15 @@ import costs from './costs.json';
 import catalog from './catalog.json';
 import briefs from './briefs.json';
 
-export type BuildingType = 'house' | 'store';
+export type BuildingType = 'house' | 'store' | 'restaurant' | 'club' | 'apartment';
+
+export const BUILDING_TYPES: ReadonlyArray<{ id: BuildingType; name: string }> = [
+  { id: 'house', name: 'House' },
+  { id: 'store', name: 'Store' },
+  { id: 'restaurant', name: 'Restaurant' },
+  { id: 'club', name: 'Nightclub' },
+  { id: 'apartment', name: 'Apartments' },
+];
 
 export interface Material {
   id: string;

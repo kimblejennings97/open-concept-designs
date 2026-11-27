@@ -8,7 +8,19 @@ Play: https://kimblejennings97.github.io/open-concept-designs/ · Design doc: ht
 
 - **Career**: start a rookie firm, take jobs from the offer board (starter home, then the corner store, then more), earn fees and XP, and get promoted by meeting tier objectives. Items above your tier are hidden.
 - **Sandbox career**: a separate save. You're a top-tier firm with everything unlocked and a rotating stream of clients. Client budgets still apply.
-- **Free build**: **New** in the top bar. Blank lot or a sample house/store, everything unlocked, no client. You can also practice any client brief from there.
+- **Free build**: **New** in the top bar. Blank lot or a sample (house, store, bistro, nightclub, apartment building), everything unlocked, no client. You can also practice any client brief from there.
+
+## Career ladder
+
+| Tier | Jobs |
+| --- | --- |
+| 1 Rookie | Starter home, garden cottage, corner store, late-night mini mart |
+| 2 Local firm | Family home, corner cafe, neighborhood bistro |
+| 3 Regional | Full-size trattoria, warehouse nightclub, neighborhood grocery store |
+| 4 Established | Garden apartments, warehouse lofts, estate home |
+| 5 Elite | Hillside mansion, luxury residences, supper club |
+
+Each building type has its own simulation: a morning rush (houses and apartments), shoppers (stores), dinner service with diners and servers (restaurants), and a Saturday night of coats, drinks and dancing (nightclubs).
 
 ## How a job goes
 

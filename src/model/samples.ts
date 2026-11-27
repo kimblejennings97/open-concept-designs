@@ -18,11 +18,14 @@ import { type Rotation, addFurniture } from './furniture';
 import { cellKey, lineEdges } from './grid';
 import { findRooms, setRoomFloor, setRoomType, setRoomWalls } from './rooms';
 
-export type SampleId = 'house' | 'store';
+export type SampleId = 'house' | 'store' | 'bistro' | 'club' | 'apartments';
 
 export const SAMPLES: Array<{ id: SampleId; name: string }> = [
   { id: 'house', name: 'Sample: two-bedroom house' },
   { id: 'store', name: 'Sample: corner store' },
+  { id: 'bistro', name: 'Sample: bistro' },
+  { id: 'club', name: 'Sample: nightclub' },
+  { id: 'apartments', name: 'Sample: apartment building' },
 ];
 
 function opening(d: Design, kind: OpeningKind, o: 'h' | 'v', x: number, y: number, len: number, flip = false) {
@@ -125,6 +128,138 @@ export function sampleStore(): Design {
   return d;
 }
 
+/** 14 m × 9 m bistro: dining room with a host stand, a commercial kitchen and a restroom. */
+export function sampleBistro(): Design {
+  const d = createDesign('Sample bistro', 40, 30);
+  paintFootprint(d, 4, 4, 31, 21, true);
+  d.roof = { style: 'gable', pitch: 25, material: 'clay', turned: false };
+  encloseFootprint(d);
+  addWalls(d, lineEdges(14, 4, 14, 14)); // kitchen | dining
+  addWalls(d, lineEdges(4, 14, 14, 14)); // kitchen bottom
+  addWalls(d, lineEdges(4, 16, 10, 16)); // restroom top
+  addWalls(d, lineEdges(10, 16, 10, 22)); // restroom side
+
+  opening(d, 'double-door', 'h', 20, 22, 4, true); // entrance
+  opening(d, 'door', 'v', 14, 10, 2); // kitchen
+  opening(d, 'door', 'h', 6, 16, 2); // restroom
+  opening(d, 'window', 'h', 18, 4, 4);
+  opening(d, 'window', 'h', 26, 22, 4);
+  opening(d, 'window', 'v', 32, 8, 4);
+
+  room(d, 20, 10, 'dining-area', 'wood', 'brick');
+  room(d, 5, 5, 'pro-kitchen', 'tile', 'wall-tile');
+  room(d, 5, 18, 'restroom', 'tile', 'wall-tile');
+
+  place(d, 'host-stand', 17, 19);
+  for (const [x, y] of [[16, 6], [21, 6], [26, 6], [26, 12]]) place(d, 'table-4', x, y);
+  for (const [x, y] of [[16, 12], [20, 12], [21, 16], [25, 17]]) place(d, 'table-2', x, y);
+  place(d, 'pro-range', 4, 4);
+  place(d, 'dish-station', 9, 4);
+  place(d, 'prep-table', 6, 10);
+  place(d, 'toilet', 8, 16);
+  place(d, 'vanity', 4, 21, 2);
+  place(d, 'plant', 31, 21);
+  return d;
+}
+
+/** 20 m × 15 m club: a dance floor open to the bar, a lobby with coat check, restrooms and a stockroom. */
+export function sampleClub(): Design {
+  const d = createDesign('Sample nightclub', 52, 40);
+  paintFootprint(d, 4, 4, 43, 33, true);
+  d.roof = { style: 'flat', pitch: 25, material: 'membrane', turned: false };
+  encloseFootprint(d);
+  addWalls(d, lineEdges(4, 26, 44, 26)); // back-of-house row
+  addTransitions(d, lineEdges(32, 4, 32, 26)); // dance floor open to the bar
+  addWalls(d, lineEdges(10, 26, 10, 34)); // coat check | lobby
+  addWalls(d, lineEdges(22, 26, 22, 34)); // lobby | restroom A
+  addWalls(d, lineEdges(28, 26, 28, 34)); // restroom A | B
+  addWalls(d, lineEdges(34, 26, 34, 34)); // restroom B | stockroom
+
+  opening(d, 'double-door', 'h', 14, 34, 4, true); // entrance
+  opening(d, 'double-door', 'h', 14, 26, 4, true); // lobby → dance floor
+  opening(d, 'door', 'v', 10, 27, 2); // coat check
+  opening(d, 'door', 'v', 22, 28, 2, true); // restroom A from the lobby
+  opening(d, 'door', 'h', 31, 26, 2, true); // restroom B from the dance floor
+  opening(d, 'door', 'h', 38, 26, 2, true); // stockroom from the bar
+
+  room(d, 15, 15, 'dance-floor', 'concrete', 'acoustic');
+  room(d, 38, 14, 'bar', 'concrete', 'brick');
+  room(d, 5, 30, 'coat-check', 'concrete', 'paint-navy');
+  room(d, 15, 31, 'lobby', 'concrete', 'brick');
+  room(d, 24, 31, 'restroom', 'tile', 'wall-tile');
+  room(d, 30, 31, 'restroom', 'tile', 'wall-tile');
+  room(d, 38, 31, 'stockroom', 'concrete', 'paint-greige');
+
+  place(d, 'dj-booth', 16, 5);
+  for (const [x, y] of [[12, 5], [21, 5], [4, 4], [31, 4]]) place(d, 'speaker', x, y);
+  for (const [x, y] of [[5, 20], [9, 20], [25, 20], [28, 16]]) place(d, 'high-top', x, y);
+  place(d, 'back-bar', 35, 4);
+  place(d, 'bar-counter', 35, 8);
+  place(d, 'bar-counter', 35, 18);
+  place(d, 'coat-counter', 10, 30, 3);
+  place(d, 'toilet', 24, 27);
+  place(d, 'toilet', 26, 27);
+  place(d, 'vanity', 22, 33, 2);
+  place(d, 'toilet', 28, 27);
+  place(d, 'toilet', 30, 27);
+  place(d, 'stock-rack', 40, 27);
+  place(d, 'mirror-ball', 17, 14);
+  return d;
+}
+
+/** 24 m × 12 m: four one-bedroom flats off a central lobby with mailboxes. */
+export function sampleApartments(): Design {
+  const d = createDesign('Sample apartments', 60, 36);
+  paintFootprint(d, 4, 4, 51, 27, true);
+  d.roof = { style: 'hip', pitch: 25, material: 'asphalt', turned: false };
+  encloseFootprint(d);
+  addWalls(d, lineEdges(4, 14, 52, 14));
+  addWalls(d, lineEdges(4, 18, 52, 18));
+  addWalls(d, lineEdges(28, 4, 28, 14));
+  addWalls(d, lineEdges(28, 18, 28, 28));
+  opening(d, 'double-door', 'v', 4, 15, 2); // main entrance
+  opening(d, 'door', 'v', 52, 15, 2, true); // side entrance
+  room(d, 10, 16, 'lobby', 'tile', 'paint-white');
+  place(d, 'mailboxes', 8, 17, 2);
+  place(d, 'mailboxes', 34, 17, 2);
+
+  // [bath 2 m][bedroom 4 m][living 4 m | open kitchen 2 m], 5 m deep.
+  for (const x0 of [4, 28]) {
+    for (const top of [true, false]) {
+      const y0 = top ? 4 : 18;
+      addWalls(d, lineEdges(x0 + 4, y0, x0 + 4, y0 + 10));
+      addWalls(d, lineEdges(x0 + 12, y0, x0 + 12, y0 + 10));
+      addTransitions(d, lineEdges(x0 + 20, y0, x0 + 20, y0 + 10));
+      opening(d, 'door', 'v', x0 + 4, y0 + (top ? 6 : 2), 2);
+      opening(d, 'door', 'v', x0 + 12, y0 + (top ? 6 : 2), 2, true);
+      opening(d, 'door', 'h', x0 + 14, top ? 14 : 18, 2, top);
+      opening(d, 'window', 'h', x0 + 6, top ? 4 : 28, 3);
+      opening(d, 'window', 'h', x0 + 15, top ? 4 : 28, 3);
+      room(d, x0 + 1, y0 + 5, 'bathroom', 'tile', 'wall-tile');
+      room(d, x0 + 8, y0 + 5, 'bedroom', 'carpet', 'paint-greige');
+      room(d, x0 + 16, y0 + 5, 'living', 'vinyl', 'paint-white');
+      room(d, x0 + 21, y0 + 5, 'kitchen', 'tile', 'paint-white');
+      const r = top ? 0 : 2;
+      const yy = (row: number, h: number) => (top ? y0 + row : y0 + 10 - row - h);
+      place(d, 'bed-double', x0 + 6, yy(0, 4), r);
+      place(d, 'toilet', x0 + 1, yy(0, 2), r);
+      place(d, 'vanity', x0 + 2, yy(0, 1), r);
+      place(d, 'kitchen-sink', x0 + 20, yy(0, 2), r);
+      place(d, 'fridge', x0 + 22, yy(0, 2), r);
+      place(d, 'sofa', x0 + 14, yy(2, 2), r);
+    }
+  }
+  return d;
+}
+
+const BUILDERS: Record<SampleId, () => Design> = {
+  house: sampleHouse,
+  store: sampleStore,
+  bistro: sampleBistro,
+  club: sampleClub,
+  apartments: sampleApartments,
+};
+
 export function sampleDesign(id: SampleId): Design {
-  return id === 'house' ? sampleHouse() : sampleStore();
+  return (BUILDERS[id] ?? sampleHouse)();
 }

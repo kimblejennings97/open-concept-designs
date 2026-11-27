@@ -17,6 +17,8 @@ export interface Goal {
   dwell: number;
   /** For reports, e.g. "bathroom". */
   label: string;
+  /** Others may squeeze past someone dwelling here (a seated diner, a dancer) instead of queuing. */
+  passable?: boolean;
 }
 
 export interface AgentSpec {
@@ -184,7 +186,7 @@ export function runSim(grid: NavGrid, specs: AgentSpec[], cfg: SimConfig = DEFAU
     if (occ[c] === 0) return true;
     const b = agents[occId[c]];
     if (!b) return true;
-    if (b.phase === PHASE_DWELL) return false; // a queue: wait your turn
+    if (b.phase === PHASE_DWELL && !b.spec.goals[b.goalIdx]?.passable) return false; // a queue: wait your turn
     if (b.next === -1 && b.path[0] === a.cell) return true; // head-on: swap
     return a.blockedFor >= cfg.giveWayAfter;
   };

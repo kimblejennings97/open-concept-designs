@@ -5,7 +5,10 @@
     { "id": "carpet", "name": "Carpet", "color": "#7d7299", "costPerM2": 45, "tags": ["classic", "cozy"], "tier": 1 },
     { "id": "tile", "name": "Ceramic tile", "color": "#d9d4c7", "costPerM2": 70, "tags": ["modern", "classic"], "tier": 1 },
     { "id": "wood", "name": "Oak wood", "color": "#b07a45", "costPerM2": 85, "tags": ["rustic", "classic", "cozy"], "tier": 1 },
-    { "id": "marble", "name": "Marble", "color": "#ece9e4", "costPerM2": 220, "tags": ["luxury", "classic"], "tier": 3 }
+    { "id": "marble", "name": "Marble", "color": "#ece9e4", "costPerM2": 220, "tags": ["luxury", "classic"], "tier": 3 },
+    { "id": "parquet", "name": "Walnut parquet", "color": "#6b4428", "costPerM2": 160, "tags": ["luxury", "classic"], "tier": 4 },
+    { "id": "terrazzo", "name": "Terrazzo", "color": "#d6d0c4", "costPerM2": 130, "tags": ["modern", "luxury"], "tier": 2 },
+    { "id": "rubber", "name": "Rubber flooring", "color": "#3c4148", "costPerM2": 40, "tags": ["industrial", "modern"], "tier": 2 }
   ],
   "walls": [
     { "id": "paint-white", "name": "Paint, white", "color": "#f2efe8", "costPerM2": 12, "tags": ["modern"], "tier": 1 },
@@ -15,7 +18,9 @@
     { "id": "wallpaper", "name": "Wallpaper", "color": "#c98f8f", "costPerM2": 30, "tags": ["classic", "cozy"], "tier": 1 },
     { "id": "wall-tile", "name": "Wall tile", "color": "#cfe0e6", "costPerM2": 60, "tags": ["modern", "classic"], "tier": 1 },
     { "id": "wood-panel", "name": "Wood panel", "color": "#8a5a32", "costPerM2": 70, "tags": ["rustic", "classic"], "tier": 1 },
-    { "id": "brick", "name": "Exposed brick", "color": "#9c4f3c", "costPerM2": 95, "tags": ["rustic", "industrial"], "tier": 1 }
+    { "id": "brick", "name": "Exposed brick", "color": "#9c4f3c", "costPerM2": 95, "tags": ["rustic", "industrial"], "tier": 1 },
+    { "id": "plaster", "name": "Venetian plaster", "color": "#e6dccb", "costPerM2": 110, "tags": ["luxury", "classic"], "tier": 4 },
+    { "id": "acoustic", "name": "Acoustic panels", "color": "#2f2a36", "costPerM2": 80, "tags": ["industrial", "modern"], "tier": 3 }
   ],
   "roofs": [
     { "id": "asphalt", "name": "Asphalt shingles", "color": "#4a4f57", "costPerM2": 350, "tags": ["classic", "modern"], "tier": 1 },
@@ -23,6 +28,7 @@
     { "id": "cedar", "name": "Cedar shakes", "color": "#8a5f3c", "costPerM2": 520, "tags": ["rustic", "cozy"], "tier": 1 },
     { "id": "clay", "name": "Clay tile", "color": "#b5583a", "costPerM2": 600, "tags": ["classic", "cozy"], "tier": 1 },
     { "id": "membrane", "name": "White membrane", "color": "#d9dcdf", "costPerM2": 300, "tags": ["modern", "industrial"], "tier": 1 },
-    { "id": "slate", "name": "Slate", "color": "#3d4452", "costPerM2": 900, "tags": ["luxury", "classic"], "tier": 3 }
+    { "id": "slate", "name": "Slate", "color": "#3d4452", "costPerM2": 900, "tags": ["luxury", "classic"], "tier": 3 },
+    { "id": "copper", "name": "Copper", "color": "#a86b3c", "costPerM2": 1100, "tags": ["luxury", "classic"], "tier": 5 }
   ]
 }

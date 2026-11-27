@@ -6,9 +6,9 @@ import { ROOF_PITCHES, ROOF_STYLES, type RoofStyle, SHED_MAX_PITCH, roofPlan, ro
 import { CELL_M, edgeSides, fmtMeters, parseEdge } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
-import { type SampleId, sampleDesign } from './model/samples';
-import { type SimBuilding, inferBuilding, simulateFlow } from './sim/scenarios';
-import { BRIEFS, type Brief, getBrief } from './data/catalog';
+import { SAMPLES, type SampleId, sampleDesign } from './model/samples';
+import { SIM_SCENARIOS, type SimBuilding, inferBuilding, simulateFlow } from './sim/scenarios';
+import { BRIEFS, BUILDING_TYPES, type Brief, getBrief } from './data/catalog';
 import { evaluateJob } from './game/evaluate';
 import { scoreAesthetics } from './model/scoring';
 import { renderBriefPanel, renderReport } from './ui/brief';
@@ -396,14 +396,17 @@ function renderRoomPanel(): void {
   typeLabel.textContent = 'Type';
   const sel = document.createElement('select');
   sel.append(new Option('Unassigned', '', false, !room.type));
-  for (const [group, label] of [
-    ['house', 'House'],
-    ['store', 'Store'],
-  ] as const) {
+  // The client's building type first; shared rooms (hallway, restroom…) show under each building.
+  const ownBuilding = getBrief(editor.design.briefId)?.building;
+  const groups = [...BUILDING_TYPES].sort((a, b) => Number(b.id === ownBuilding) - Number(a.id === ownBuilding));
+  let marked = false;
+  for (const { id: group, name } of groups) {
     const og = document.createElement('optgroup');
-    og.label = label;
-    for (const t of ROOM_TYPES.filter((t) => t.buildingTypes[0] === group)) {
-      og.append(new Option(t.name, t.id, false, t.id === room.type));
+    og.label = name;
+    for (const t of ROOM_TYPES.filter((t) => t.buildingTypes.includes(group))) {
+      const selected: boolean = !marked && t.id === room.type;
+      marked ||= selected;
+      og.append(new Option(t.name, t.id, false, selected));
     }
     sel.append(og);
   }
@@ -510,11 +513,7 @@ function renderFurniturePanel(): void {
   filters.className = 'filters';
   const bSel = document.createElement('select');
   bSel.setAttribute('aria-label', 'Building type');
-  for (const [v, label] of [
-    ['all', 'All buildings'],
-    ['house', 'House'],
-    ['store', 'Store'],
-  ] as const) {
+  for (const { id: v, name: label } of [{ id: 'all', name: 'All buildings' }, ...BUILDING_TYPES]) {
     bSel.append(new Option(label, v, false, catalogBuilding === v));
   }
   bSel.onchange = () => {
@@ -1026,9 +1025,8 @@ function renderSim(): void {
     label.textContent = 'Simulate as';
     const sel = document.createElement('select');
     const auto = inferBuilding(editor.design, editor.getRooms());
-    sel.append(new Option(`Auto (${auto})`, 'auto', false, simChoice === 'auto'));
-    sel.append(new Option('House: morning rush', 'house', false, simChoice === 'house'));
-    sel.append(new Option('Store: shoppers', 'store', false, simChoice === 'store'));
+    sel.append(new Option(`Auto (${BUILDING_TYPES.find((b) => b.id === auto)?.name.toLowerCase() ?? auto})`, 'auto', false, simChoice === 'auto'));
+    for (const [id, label] of Object.entries(SIM_SCENARIOS)) sel.append(new Option(label, id, false, simChoice === id));
     sel.onchange = () => {
       simChoice = sel.value as SimBuilding | 'auto';
     };
@@ -1184,7 +1182,7 @@ el.dlgNew.addEventListener('close', () => {
   const practice = start.startsWith('brief:') ? getBrief(start.slice(6)) : undefined;
   if (practice) {
     d = designForBrief(practice);
-  } else if (start === 'house' || start === 'store') {
+  } else if (SAMPLES.some((x) => x.id === start)) {
     d = sampleDesign(start as SampleId);
     if (name !== 'Untitled design') d.name = name;
   } else {

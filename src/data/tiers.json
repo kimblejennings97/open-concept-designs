@@ -1,25 +1,98 @@
 {
-  "_comment": "Career tiers. Objectives must all be met to be promoted to the next tier. Kinds: jobs (distinct briefs finished with at least minStars), flow (best flow score on a building type).",
+  "_comment": "Career tiers. Objectives must all be met to be promoted to the next tier. Kinds: jobs (distinct briefs finished with at least minStars, counting earlier tiers), flow (best flow score on a building type).",
   "tiers": [
     {
       "tier": 1,
       "name": "Rookie",
       "maxFloors": 1,
-      "unlocks": "Basic walls, flooring, doors and windows; houses and corner stores.",
+      "unlocks": "Houses and corner stores.",
       "objectives": [
-        { "kind": "jobs", "minStars": 2, "count": 3, "text": "Finish 3 different jobs with 2+ stars" },
-        { "kind": "flow", "building": "store", "min": 80, "text": "Score 80+ flow on a store" }
+        {
+          "kind": "jobs",
+          "minStars": 2,
+          "count": 3,
+          "text": "Finish 3 different jobs with 2+ stars"
+        },
+        {
+          "kind": "flow",
+          "building": "store",
+          "min": 80,
+          "text": "Score 80+ flow on a store"
+        }
       ]
     },
     {
       "tier": 2,
       "name": "Local firm",
-      "maxFloors": 2,
-      "unlocks": "Stairs, more themes, mid-tier decor; larger houses, a retail boutique and a small cafe.",
-      "objectives": []
+      "maxFloors": 1,
+      "unlocks": "Restaurants (dining areas, commercial kitchens, booths), bigger family homes, terrazzo and rubber floors.",
+      "objectives": [
+        {
+          "kind": "jobs",
+          "minStars": 2,
+          "count": 6,
+          "text": "Finish 6 different jobs with 2+ stars"
+        },
+        {
+          "kind": "flow",
+          "building": "restaurant",
+          "min": 75,
+          "text": "Score 75+ flow on a restaurant"
+        }
+      ]
     },
-    { "tier": 3, "name": "Regional", "maxFloors": 4, "unlocks": "Elevators, checkouts, bar and stage pieces; duplexes, grocery stores and nightclubs.", "objectives": [] },
-    { "tier": 4, "name": "Established", "maxFloors": 8, "unlocks": "Dock doors, conveyors and forklifts; apartment buildings, big-box retail and shipping.", "objectives": [] },
-    { "tier": 5, "name": "Elite", "maxFloors": 20, "unlocks": "Luxury decor and premium finishes; mansions, high-rises and flagship stores.", "objectives": [] }
+    {
+      "tier": 3,
+      "name": "Regional",
+      "maxFloors": 1,
+      "unlocks": "Nightclubs (bars, dance floors, DJ booths), full-size restaurants and grocery stores, marble, slate and acoustic panels.",
+      "objectives": [
+        {
+          "kind": "jobs",
+          "minStars": 2,
+          "count": 9,
+          "text": "Finish 9 different jobs with 2+ stars"
+        },
+        {
+          "kind": "flow",
+          "building": "club",
+          "min": 75,
+          "text": "Score 75+ flow on a nightclub"
+        },
+        {
+          "kind": "flow",
+          "building": "store",
+          "min": 85,
+          "text": "Score 85+ flow on a store"
+        }
+      ]
+    },
+    {
+      "tier": 4,
+      "name": "Established",
+      "maxFloors": 1,
+      "unlocks": "Apartment buildings (lobbies, mailboxes, package lockers) and estate homes with home theaters, gyms, king beds and wine walls.",
+      "objectives": [
+        {
+          "kind": "jobs",
+          "minStars": 3,
+          "count": 5,
+          "text": "Finish 5 different jobs with 3 stars"
+        },
+        {
+          "kind": "flow",
+          "building": "apartment",
+          "min": 75,
+          "text": "Score 75+ flow on an apartment building"
+        }
+      ]
+    },
+    {
+      "tier": 5,
+      "name": "Elite",
+      "maxFloors": 1,
+      "unlocks": "Mansions, luxury residences and supper clubs: indoor pools, hot tubs, chandeliers, marble statues, grand pianos and copper roofs.",
+      "objectives": []
+    }
   ]
 }
