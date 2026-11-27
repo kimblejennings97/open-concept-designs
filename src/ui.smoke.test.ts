@@ -323,4 +323,21 @@ describe('polish', () => {
     await tick(80);
     expect((document.getElementById('design-name') as HTMLInputElement).value).toBe('Sample store');
   });
+
+  it('switches between meters and square feet', async () => {
+    const stats = document.getElementById('stats')!;
+    const units = document.getElementById('btn-units') as HTMLButtonElement;
+    expect(stats.textContent).toMatch(/m²/);
+    units.click();
+    await tick(20);
+    expect(units.textContent).toBe('ft²');
+    expect(stats.textContent).toMatch(/sq ft/);
+    expect(stats.textContent).not.toMatch(/m²/);
+    clickButton('New');
+    expect(document.getElementById('form-new')!.textContent).toMatch(/Lot width \(ft\)/);
+    (document.getElementById('dlg-new') as HTMLDialogElement).close('cancel');
+    units.click();
+    await tick(20);
+    expect(stats.textContent).toMatch(/m²/);
+  });
 });

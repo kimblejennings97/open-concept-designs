@@ -31,7 +31,8 @@ import {
   roomType,
 } from './data/catalog';
 import { deleteDesign, listDesigns, loadDesign, saveDesign } from './storage/db';
-import { getLastDesignId, setLastDesignId } from './storage/settings';
+import { getLastDesignId, getUnitsPref, setLastDesignId, setUnitsPref } from './storage/settings';
+import { type Units, fmtArea, fmtAreaRound, fmtLen, fmtPerArea, fromDisplayLen, getUnits, lenUnitLabel, setUnits, toDisplayLen } from './model/units';
 
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
 const TOUCH_HINT = 'Two fingers pan and zoom. Toggle Remove to erase with any tool.';
@@ -341,7 +342,7 @@ function renderRoofPanel(): void {
   const rects = roofPlan(editor.design.footprint, roof);
   if (rects.length) {
     const top = roofRise(rects, roof) + COSTS.wallHeightM;
-    el.options.append(note(`${rects.length} roof section${rects.length === 1 ? '' : 's'} · ${top.toFixed(1)} m to the top`));
+    el.options.append(note(`${rects.length} roof section${rects.length === 1 ? '' : 's'} · ${fmtLen(top)} to the top`));
   }
   const see = document.createElement('button');
   see.type = 'button';
@@ -384,10 +385,10 @@ function renderRoomPanel(): void {
   }
 
   const type = roomType(room.type);
-  el.options.append(h2(type?.name ?? 'Room'), note(`${room.areaM2.toFixed(1)} m²`));
+  el.options.append(h2(type?.name ?? 'Room'), note(fmtArea(room.areaM2)));
   if (!room.enclosed) el.options.append(note('Not enclosed: add walls to close this area in.', 'note warn'));
   if (type && room.areaM2 < type.minAreaM2) {
-    el.options.append(note(`Small for a ${type.name.toLowerCase()} (aim for ${type.minAreaM2} m²+).`, 'note warn'));
+    el.options.append(note(`Small for a ${type.name.toLowerCase()} (aim for ${fmtAreaRound(type.minAreaM2)}+).`, 'note warn'));
   }
 
   // Type
@@ -458,7 +459,7 @@ function swatches(
     list.append(b);
   };
   if (allowNone) button(null, 'Unfinished', null, '');
-  for (const m of materials) if (m.tier <= unlockedTier() || m.id === current) button(m.id, m.name, m.color, `${m.costPerM2}/m²`);
+  for (const m of materials) if (m.tier <= unlockedTier() || m.id === current) button(m.id, m.name, m.color, fmtPerArea(m.costPerM2));
   wrap.append(label, list);
   return wrap;
 }
@@ -597,11 +598,11 @@ function renderStats(): void {
   const rooms = editor.getRooms().rooms;
   dl(el.stats, [
     ['Lot', `${fmtMeters(d.lotW)} × ${fmtMeters(d.lotH)}`],
-    ['Footprint', `${s.footprintM2.toFixed(1)} m²`],
+    ['Footprint', fmtArea(s.footprintM2)],
     ['Rooms', String(rooms.filter((r) => r.enclosed).length)],
-    ['Exterior walls', `${s.exteriorWallM.toFixed(1)} m`],
-    ['Interior walls', `${s.interiorWallM.toFixed(1)} m`],
-    ['Transitions', `${s.transitionM.toFixed(1)} m`],
+    ['Exterior walls', fmtLen(s.exteriorWallM)],
+    ['Interior walls', fmtLen(s.interiorWallM)],
+    ['Transitions', fmtLen(s.transitionM)],
     ['Roof', ROOF_STYLES[d.roof.style].label + (d.roof.style === 'flat' ? '' : ` · ${d.roof.pitch}°`)],
     ['Doors', String(s.doors)],
     ['Windows', String(s.windows)],
@@ -936,6 +937,43 @@ fileInput.onchange = async () => {
     alert(`Couldn’t open that file: ${err instanceof Error ? err.message : String(err)}`);
   }
 };
+/** Lot-size fields in the New dialog follow the display units. */
+function syncLotFields(): void {
+  const unit = lenUnitLabel();
+  for (const [name, label, def] of [['w', 'Lot width', 20], ['h', 'Lot depth', 15]] as const) {
+    const input = el.formNew.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+    const imperial = getUnits() === 'imperial';
+    input.min = String(imperial ? 16 : 5);
+    input.max = String(imperial ? 330 : 100);
+    input.step = imperial ? '1' : '0.5';
+    input.value = String(imperial ? Math.round(toDisplayLen(def)) : def);
+    input.previousSibling!.textContent = `${label} (${unit}) `;
+  }
+}
+
+{
+  const b = $<HTMLButtonElement>('btn-units');
+  const pref = getUnitsPref();
+  if (pref === 'metric' || pref === 'imperial') setUnits(pref);
+  const sync = () => {
+    const imperial = getUnits() === 'imperial';
+    b.textContent = imperial ? 'ft²' : 'm²';
+    b.title = imperial ? 'Showing feet and square feet: switch to meters' : 'Showing meters: switch to feet and square feet';
+  };
+  sync();
+  b.onclick = () => {
+    const next: Units = getUnits() === 'metric' ? 'imperial' : 'metric';
+    setUnits(next);
+    setUnitsPref(next);
+    sync();
+    play('click');
+    lastOptionsKey = '';
+    lastSimKey = '';
+    editor.redraw();
+    refreshUi(true);
+  };
+}
+
 {
   const b = $<HTMLButtonElement>('btn-sound');
   const sync = () => {
@@ -1014,7 +1052,7 @@ function renderSim(): void {
     ['People', `${sim.finished} of ${sim.people} made it`],
     ['Average trip', `${Math.round(sim.avgTripS)} s`],
     ['Average wait', `${Math.round(sim.avgWaitS)} s`],
-    ['Average walk', `${Math.round(sim.avgWalkM)} m`],
+    ['Average walk', fmtLen(Math.round(sim.avgWalkM))],
   ]);
 
   const issues = document.createElement('ol');
@@ -1112,7 +1150,7 @@ function refreshUi(designChanged = false): void {
   el.hint.textContent = editor.message || (IS_TOUCH ? TOUCH_HINT + ' ' : '') + TOOL_HINTS[editor.tool];
   el.hint.classList.toggle('warn', Boolean(editor.message));
   const p = editor.pointer;
-  el.pos.textContent = p ? `${(p.wx * CELL_M).toFixed(1)} m, ${(p.wy * CELL_M).toFixed(1)} m` : '';
+  el.pos.textContent = p ? `${fmtLen(p.wx * CELL_M)}, ${fmtLen(p.wy * CELL_M)}` : '';
 }
 
 async function switchTo(design: Design): Promise<void> {
@@ -1130,6 +1168,7 @@ async function switchTo(design: Design): Promise<void> {
 
 function openNewDialog(): void {
   el.formNew.reset();
+  syncLotFields();
   el.dlgNew.returnValue = ''; // Esc keeps the previous value, so clear it
   el.dlgNew.showModal();
 }
@@ -1138,7 +1177,7 @@ el.dlgNew.addEventListener('close', () => {
   if (el.dlgNew.returnValue !== 'ok') return;
   const f = new FormData(el.formNew);
   const toCells = (v: FormDataEntryValue | null) =>
-    Math.min(200, Math.max(10, Math.round(Number(v) / CELL_M) || 40));
+    Math.min(200, Math.max(10, Math.round(fromDisplayLen(Number(v)) / CELL_M) || 40));
   const name = String(f.get('name') ?? '').trim() || 'Untitled design';
   const start = String(f.get('start') ?? 'blank');
   let d: Design;

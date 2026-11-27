@@ -19,6 +19,7 @@ import {
   edgeInLot,
   newId,
 } from '../model/design';
+import { fmtArea } from '../model/units';
 import { type Edge, cellKey, edgeKey, fmtMeters, lineEdges, nearestEdge, parseCell, parseEdge } from '../model/grid';
 import { type Room, type RoomMap, findRooms, parseSideKey } from '../model/rooms';
 import { type CatalogItem, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
@@ -455,6 +456,11 @@ export class Editor {
     if (this.selectedFurnitureId && !this.selectedFurniture()) this.selectedFurnitureId = null;
     this.requestRender();
     this.onChange(designChanged);
+  }
+
+  /** Redraw without any design change (e.g. after switching display units). */
+  redraw(): void {
+    this.requestRender();
   }
 
   private requestRender(): void {
@@ -1032,7 +1038,7 @@ export class Editor {
       ctx.fillText(title, x, y - 7);
       ctx.font = '11px system-ui, sans-serif';
       ctx.fillStyle = COLORS.muted;
-      const area = `${room.areaM2.toFixed(1)} m²`;
+      const area = fmtArea(room.areaM2);
       ctx.strokeText(area, x, y + 8);
       ctx.fillText(area, x, y + 8);
     }

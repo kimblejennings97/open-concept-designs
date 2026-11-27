@@ -18,5 +18,8 @@ function set(key: string, value: string | null): void {
   }
 }
 
+export const getUnitsPref = (): string | null => get('units');
+export const setUnitsPref = (u: string): void => set('units', u);
+
 export const getLastDesignId = (): string | null => get('lastDesignId');
 export const setLastDesignId = (id: string | null): void => set('lastDesignId', id);

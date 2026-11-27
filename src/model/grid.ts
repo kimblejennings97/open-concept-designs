@@ -6,6 +6,8 @@
  *   - "h" edge (x, y): horizontal, from vertex (x, y) to (x+1, y). Separates cell (x, y-1) above from (x, y) below.
  *   - "v" edge (x, y): vertical, from vertex (x, y) to (x, y+1). Separates cell (x-1, y) left from (x, y) right.
  */
+import { fmtLen } from './units';
+
 export const CELL_M = 0.5;
 
 export type Orient = 'h' | 'v';
@@ -62,8 +64,7 @@ export function nearestEdge(wx: number, wy: number, maxDist: number): Edge | nul
     : { o: 'v', x: vx, y: Math.floor(wy) };
 }
 
-/** Format a length in cells as meters, e.g. 7 → "3.5 m". */
+/** Format a length in cells in the current display units, e.g. 7 → "3.5 m" or "11′ 6″". */
 export function fmtMeters(cells: number): string {
-  const m = cells * CELL_M;
-  return `${Number.isInteger(m) ? m.toFixed(0) : m.toFixed(1)} m`;
+  return fmtLen(cells * CELL_M);
 }

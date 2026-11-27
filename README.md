@@ -32,6 +32,7 @@ Play: https://kimblejennings97.github.io/open-concept-designs/ · Design doc: ht
 | Pan | Middle-drag, or hold `Space` and drag | Two fingers |
 | Zoom | Mouse wheel | Pinch |
 | Fit lot to screen / deselect | `Home` / `Esc` | Fit view |
+| Meters ↔ feet and square feet | **m²** / **ft²** button in the top bar | Same |
 
 Designs autosave in the browser (IndexedDB). **Export** / **Import** save a design as a `.ocd.json` file.
 

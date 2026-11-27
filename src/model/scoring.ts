@@ -7,6 +7,7 @@ import { type Design, openingEdges, wallKind } from './design';
 import { CELL_M, cellKey, edgeSides, parseEdge } from './grid';
 import { type Room, type RoomMap, openGroups, openNeighbors, roomFloor, roomWalls } from './rooms';
 import { ROOF_STYLES } from './roof';
+import { fmtArea, fmtAreaRound } from './units';
 import { DOOR_STYLES, doorStyle, isDoor } from './doors';
 
 export interface ScoreIssue {
@@ -260,12 +261,12 @@ export function checkBrief(d: Design, rooms: RoomMap, brief: Brief): BriefCheck[
       const matching = rooms.rooms.filter((r) => r.enclosed && r.type === req.roomType);
       const bigEnough = req.minAreaM2 ? matching.filter((r) => r.areaM2 >= req.minAreaM2!) : matching;
       const have = bigEnough.length;
-      const label = `${req.count} ${name.toLowerCase()}${req.count === 1 ? '' : 's'}${req.minAreaM2 ? ` (${req.minAreaM2} m²+)` : ''}`;
+      const label = `${req.count} ${name.toLowerCase()}${req.count === 1 ? '' : 's'}${req.minAreaM2 ? ` (${fmtAreaRound(req.minAreaM2)}+)` : ''}`;
       let detail: string | undefined;
       if (have < req.count) {
         detail =
           matching.length > have
-            ? `${matching.length - have} too small (smallest ${Math.min(...matching.map((r) => r.areaM2)).toFixed(1)} m²)`
+            ? `${matching.length - have} too small (smallest ${fmtArea(Math.min(...matching.map((r) => r.areaM2)))})`
             : `have ${have}`;
       }
       // Undersized rooms still earn some credit.
@@ -309,10 +310,10 @@ export function checkBrief(d: Design, rooms: RoomMap, brief: Brief): BriefCheck[
       const ok = footprintM2 >= lo && footprintM2 <= hi;
       const miss = footprintM2 < lo ? (lo - footprintM2) / lo : footprintM2 > hi ? (footprintM2 - hi) / hi : 0;
       checks.push({
-        label: `Floor area ${lo}–${hi === Infinity ? '∞' : hi} m²`,
+        label: hi === Infinity ? `Floor area ${fmtAreaRound(lo)}+` : `Floor area ${fmtAreaRound(lo)}–${fmtAreaRound(hi)}`,
         met: ok,
         credit: Math.max(0, 1 - miss * 2),
-        detail: ok ? undefined : `${footprintM2.toFixed(0)} m² now`,
+        detail: ok ? undefined : `${fmtAreaRound(footprintM2)} now`,
       });
     }
   }

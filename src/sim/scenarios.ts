@@ -10,6 +10,7 @@ import { type Design, OPENING_SPECS, openingEdges, wallKind } from '../model/des
 import { footprintCells } from '../model/furniture';
 import { cellKey, parseCell, parseEdge, edgeSides, CELL_M } from '../model/grid';
 import type { RoomMap } from '../model/rooms';
+import { fmtLen } from '../model/units';
 import { type AgentSpec, type Goal, type SimResult, runSim } from './engine';
 import { type NavGrid, cellIndex, createNavGrid, walkable } from './navgrid';
 
@@ -297,7 +298,7 @@ export function simulateFlow(d: Design, rooms: RoomMap, building: SimBuilding, s
   // Long walks, compared with a compact layout of the same size.
   const refCells = 2.2 * Math.sqrt(d.footprint.size) * (building === 'store' ? 1.6 : 1);
   if (avgWalkCells > refCells * 1.4) {
-    issues.push({ text: `Long walks: each trip covers about ${Math.round(avgWalkCells * CELL_M)} m on average.`, severity: 15 });
+    issues.push({ text: `Long walks: each trip covers about ${fmtLen(Math.round(avgWalkCells * CELL_M))} on average.`, severity: 15 });
   }
 
   const totalTrip = outs.reduce((s, o) => s + trip(o), 0);

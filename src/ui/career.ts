@@ -2,6 +2,7 @@
 import { type Brief, THEME_NAMES } from '../data/catalog';
 import { type CareerKind, type CareerSave, type Payout, objectiveStatus, offers, tierInfo } from '../game/career';
 import { fmtMoney } from '../model/cost';
+import { fmtLen } from '../model/units';
 import { starsText } from './brief';
 
 function elt<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -116,7 +117,7 @@ export function renderOffice(
       top,
       elt('div', 'muted small', `${b.client} · ${b.clientRole}`),
       elt('p', 'small', b.summary),
-      elt('div', 'small offer-terms', `Budget ${fmtMoney(b.budget)} · Fee up to ${fmtMoney(Math.round(b.fee * 1.5))} · ${THEME_NAMES[b.theme] ?? b.theme} style · ${b.lot.w}×${b.lot.h} m lot`),
+      elt('div', 'small offer-terms', `Budget ${fmtMoney(b.budget)} · Fee up to ${fmtMoney(Math.round(b.fee * 1.5))} · ${THEME_NAMES[b.theme] ?? b.theme} style · ${fmtLen(b.lot.w)} × ${fmtLen(b.lot.h)} lot`),
     );
     const isActive = save.active?.briefId === b.id;
     card.append(
