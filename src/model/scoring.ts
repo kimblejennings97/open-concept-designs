@@ -2,10 +2,11 @@
  * Scores for a design: aesthetics, budget and brief match (flow comes from the sim).
  * Each returns 0–100 plus plain-language issues for the report card.
  */
-import { type Brief, THEME_NAMES, catalogItem, floorMaterial, roomType, wallFinish } from '../data/catalog';
+import { type Brief, THEME_NAMES, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
 import { type Design, openingEdges, wallKind } from './design';
 import { CELL_M, cellKey, edgeSides, parseEdge } from './grid';
-import { type Room, type RoomMap, roomFloor, roomWalls } from './rooms';
+import { type Room, type RoomMap, openGroups, openNeighbors, roomFloor, roomWalls } from './rooms';
+import { ROOF_STYLES } from './roof';
 
 export interface ScoreIssue {
   category: 'flow' | 'aesthetics' | 'budget' | 'brief';
@@ -108,6 +109,10 @@ export function scoreAesthetics(d: Design, rooms: RoomMap, wantedTheme?: string)
     const item = catalogItem(f.item);
     if (item?.tags.length) tagSets.push(item.tags);
   }
+  // The roof is the biggest thing anyone sees from the street: style and material both count.
+  const roofMat = roofMaterial(d.roof.material);
+  if (roofMat) tagSets.push(roofMat.tags);
+  tagSets.push(ROOF_STYLES[d.roof.style].tags);
   let theme = wantedTheme ?? null;
   if (!theme && tagSets.length) {
     const counts = new Map<string, number>();
@@ -124,13 +129,21 @@ export function scoreAesthetics(d: Design, rooms: RoomMap, wantedTheme?: string)
     });
   }
 
-  // Daylight in rooms people use.
+  // Daylight in rooms people use. Open-plan rooms share light across transitions.
   const win = windowMeters(d, rooms);
+  const groupOf = new Map<Room, Room[]>();
+  for (const g of openGroups(rooms)) for (const r of g) groupOf.set(r, g);
+  const lightOf = (r: Room): number => {
+    const own = (win.get(r) ?? 0) / Math.max(1, r.areaM2 / 10);
+    const g = groupOf.get(r) ?? [r];
+    const shared = g.reduce((s, x) => s + (win.get(x) ?? 0), 0) / Math.max(1, g.reduce((s, x) => s + x.areaM2, 0) / 10);
+    return Math.min(1, Math.max(own, shared));
+  };
   const lit = enclosed.filter((r) => r.type && LIT_ROOMS.has(r.type));
   let light = 1;
   if (lit.length) {
-    light = lit.reduce((s, r) => s + Math.min(1, (win.get(r) ?? 0) / Math.max(1, r.areaM2 / 10)), 0) / lit.length;
-    const dark = lit.filter((r) => !win.get(r));
+    light = lit.reduce((s, r) => s + lightOf(r), 0) / lit.length;
+    const dark = lit.filter((r) => lightOf(r) === 0);
     if (dark.length) {
       issues.push({
         category: 'aesthetics',
@@ -265,6 +278,28 @@ export function checkBrief(d: Design, rooms: RoomMap, brief: Brief): BriefCheck[
         met: have >= req.count,
         credit: Math.min(1, have / req.count),
         detail: have < req.count ? `have ${have}` : undefined,
+      });
+    } else if (req.kind === 'open') {
+      const a = roomType(req.a)?.name ?? req.a;
+      const b = roomType(req.b)?.name ?? req.b;
+      const label = `${a} open to the ${b.toLowerCase()}`;
+      const as = rooms.rooms.filter((r) => r.enclosed && r.type === req.a);
+      const joined = as.some((r) => openNeighbors(rooms, r).some((n) => n.type === req.b));
+      const both = as.length > 0 && rooms.rooms.some((r) => r.enclosed && r.type === req.b);
+      checks.push({
+        label,
+        met: joined,
+        credit: joined ? 1 : both ? 0.3 : 0,
+        detail: joined ? undefined : both ? 'use the Transition tool between them instead of a wall' : 'need both rooms',
+      });
+    } else if (req.kind === 'roof') {
+      const names = req.styles.map((st) => ROOF_STYLES[st as keyof typeof ROOF_STYLES]?.label.toLowerCase() ?? st);
+      const ok = req.styles.includes(d.roof.style);
+      checks.push({
+        label: `A ${names.join(' or ')} roof`,
+        met: ok,
+        credit: ok ? 1 : 0,
+        detail: ok ? undefined : `it's ${ROOF_STYLES[d.roof.style].label.toLowerCase()} now (Roof tool)`,
       });
     } else {
       const lo = req.minM2 ?? 0;

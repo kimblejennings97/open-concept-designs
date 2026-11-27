@@ -9,6 +9,7 @@ import { type Design, openingEdges, wallKind } from '../model/design';
 import type { Furniture } from '../model/furniture';
 import { CELL_M, parseCell, parseEdge } from '../model/grid';
 import { parseSideKey } from '../model/rooms';
+import { roofGeometry } from './roof3d';
 
 export const WALL_H = COSTS.wallHeightM;
 const DOOR_H = 2.1;
@@ -21,6 +22,8 @@ export interface BuiltScene {
   root: THREE.Group;
   /** Walls, lintels, sills and glass; scaled down for the cutaway view. */
   walls: THREE.Group;
+  /** The roof; hidden in the cutaway view. */
+  roof: THREE.Group;
   /** Center of the building footprint, for aiming the camera. */
   center: THREE.Vector3;
   /** Rough size of the building, for camera distance. */
@@ -200,7 +203,8 @@ function furnitureGeometry(d: Design): THREE.BufferGeometry[] {
 export function buildScene(d: Design): BuiltScene {
   const root = new THREE.Group();
   const walls = new THREE.Group();
-  root.add(walls);
+  const roof = new THREE.Group();
+  root.add(walls, roof);
   const disposables: Array<{ dispose: () => void }> = [];
   const solid = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
   const glass = new THREE.MeshStandardMaterial({ color: GLASS, transparent: true, opacity: 0.35, roughness: 0.1 });
@@ -237,6 +241,13 @@ export function buildScene(d: Design): BuiltScene {
     maxZ = Math.max(maxZ, y + 1);
     const mat = floorMaterial(d.floors.get(k));
     floorParts.push(box(x * CELL_M, 0, y * CELL_M, (x + 1) * CELL_M, 0.05, (y + 1) * CELL_M, mat?.color ?? '#9aa0a6'));
+  }
+  // Transitions: a slim threshold strip where two open-plan rooms meet.
+  for (const k of d.transitions) {
+    const e = parseEdge(k);
+    const w = 0.03;
+    if (e.o === 'h') floorParts.push(box(e.x * CELL_M, 0.05, e.y * CELL_M - w, (e.x + 1) * CELL_M, 0.058, e.y * CELL_M + w, '#b9b2a5'));
+    else floorParts.push(box(e.x * CELL_M - w, 0.05, e.y * CELL_M, e.x * CELL_M + w, 0.058, (e.y + 1) * CELL_M, '#b9b2a5'));
   }
   const floors = merged(floorParts, solid, false);
   if (floors) root.add(floors);
@@ -298,6 +309,16 @@ export function buildScene(d: Design): BuiltScene {
     }
   }
 
+  const roofGeo = roofGeometry(d, WALL_H);
+  if (roofGeo) {
+    const roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(roofGeo, roofMat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    roof.add(mesh);
+    disposables.push(roofGeo, roofMat);
+  }
+
   const furniture = merged(furnitureGeometry(d), solid);
   if (furniture) root.add(furniture);
 
@@ -308,5 +329,5 @@ export function buildScene(d: Design): BuiltScene {
     ? new THREE.Vector3(((minX + maxX) / 2) * CELL_M, 0, ((minZ + maxZ) / 2) * CELL_M)
     : new THREE.Vector3(lotW / 2, 0, lotH / 2);
   const radius = hasBuilding ? Math.hypot(maxX - minX, maxZ - minZ) * CELL_M * 0.5 : Math.hypot(lotW, lotH) / 2;
-  return { root, walls, center, radius: Math.max(3, radius), dispose: () => disposables.forEach((x) => x.dispose()) };
+  return { root, walls, roof, center, radius: Math.max(3, radius), dispose: () => disposables.forEach((x) => x.dispose()) };
 }

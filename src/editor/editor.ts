@@ -3,12 +3,14 @@ import {
   type Opening,
   OPENING_SPECS,
   addOpening,
+  addTransitions,
   addWalls,
   openingEdges,
   openingOnEdge,
   openingProblem,
   paintFootprint,
   removeOpening,
+  removeTransitions,
   removeWalls,
   restore,
   snapshot,
@@ -18,7 +20,8 @@ import {
 } from '../model/design';
 import { type Edge, cellKey, edgeKey, fmtMeters, lineEdges, nearestEdge, parseCell, parseEdge } from '../model/grid';
 import { type Room, type RoomMap, findRooms, parseSideKey } from '../model/rooms';
-import { type CatalogItem, catalogItem, floorMaterial, roomType, wallFinish } from '../data/catalog';
+import { type CatalogItem, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
+import { roofLines, roofPlan } from '../model/roof';
 import {
   type Furniture,
   type FurnitureCheck,
@@ -37,17 +40,20 @@ import { History } from './history';
 import type { FlowReport } from '../sim/scenarios';
 import { PHASE_BLOCKED, PHASE_DWELL } from '../sim/engine';
 
-export type ToolId = 'footprint' | 'wall' | 'door' | 'window' | 'room' | 'furniture' | 'erase';
+export type ToolId = 'footprint' | 'wall' | 'transition' | 'door' | 'window' | 'room' | 'furniture' | 'roof' | 'erase';
 export type DoorKind = 'door' | 'double-door';
 
 export const TOOL_HINTS: Record<ToolId, string> = {
   footprint: 'Drag to paint the building footprint. Right-drag (or Shift-drag) to clear.',
   wall: 'Drag between grid points to draw a wall. Right-drag (or Shift-drag) to remove walls.',
+  transition:
+    'Drag along a line between two rooms to mark an open boundary (no wall), like an open kitchen and living room. Right-drag (or Shift-drag) to remove.',
   door: 'Click a wall to place a door. R flips the swing. Right-click a door to remove it.',
   window: 'Click an exterior wall to place a window. [ and ] change the width. Right-click to remove.',
   room: 'Click a room to select it, then set its type, flooring and wall finish in the sidebar. Esc deselects.',
   furniture: 'Pick an item from the catalog, then click to place it. R rotates. Drag a placed item to move it; right-click or Delete removes it.',
-  erase: 'Click or drag over furniture, doors, windows and walls to remove them.',
+  roof: 'Choose the roof style, pitch and material in the sidebar. Open 3D to see it.',
+  erase: 'Click or drag over furniture, doors, windows, walls and transitions to remove them.',
 };
 
 const MIN_SCALE = 4;
@@ -64,6 +70,8 @@ const COLORS = {
   footprint: 'rgba(110, 170, 255, 0.24)',
   wallExt: '#f1f5fb',
   wallInt: '#a9c0e0',
+  transition: 'rgba(255, 207, 112, 0.85)',
+  ridge: 'rgba(255, 236, 200, 0.9)',
   window: '#7fd4ff',
   door: '#ffcf70',
   ok: 'rgba(110, 230, 150, 0.95)',
@@ -85,7 +93,7 @@ const COLORS = {
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number }
   | { kind: 'rect'; add: boolean; x0: number; y0: number; x1: number; y1: number }
-  | { kind: 'line'; add: boolean; ax: number; ay: number; bx: number; by: number }
+  | { kind: 'line'; layer: 'wall' | 'transition'; add: boolean; ax: number; ay: number; bx: number; by: number }
   | { kind: 'erase'; before: string; changed: boolean; layer: 'furniture' | 'opening' | 'wall' | null }
   | { kind: 'tap'; remove: boolean }
   | { kind: 'move'; id: string; offX: number; offY: number; before: string; ox: number; oy: number };
@@ -493,12 +501,17 @@ export class Editor {
         this.drag = { kind: 'rect', add: !remove, x0: x, y0: y, x1: x, y1: y };
         break;
       }
-      case 'wall': {
+      case 'wall':
+      case 'transition': {
         const x = Math.round(p.wx);
         const y = Math.round(p.wy);
-        this.drag = { kind: 'line', add: !remove, ax: x, ay: y, bx: x, by: y };
+        this.drag = { kind: 'line', layer: this.tool, add: !remove, ax: x, ay: y, bx: x, by: y };
         break;
       }
+      case 'roof':
+        // The Roof tool is all sidebar; the canvas only pans.
+        this.drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: this.cam.ox, oy: this.cam.oy };
+        break;
       case 'furniture': {
         const hit = furnitureAt(this.design, cellKey(Math.floor(p.wx), Math.floor(p.wy)));
         if (!remove && hit && !(this.armedItem && this.ghostOk(p.wx, p.wy))) {
@@ -675,7 +688,15 @@ export class Editor {
       if (this.mutate((d) => paintFootprint(d, drag.x0, drag.y0, drag.x1, drag.y1, drag.add))) this.sound(drag.add ? 'draw' : 'remove');
     } else if (drag?.kind === 'line') {
       const keys = lineEdges(drag.ax, drag.ay, drag.bx, drag.by);
-      if (this.mutate((d) => (drag.add ? addWalls(d, keys) : removeWalls(d, keys)))) this.sound(drag.add ? 'draw' : 'remove');
+      const edit =
+        drag.layer === 'wall'
+          ? (d: Design) => (drag.add ? addWalls(d, keys) : removeWalls(d, keys))
+          : (d: Design) => (drag.add ? addTransitions(d, keys) : removeTransitions(d, keys));
+      if (this.mutate(edit)) this.sound(drag.add ? 'draw' : 'remove');
+      else if (drag.add && drag.layer === 'transition' && keys.length) {
+        this.message = 'Transitions go on lines between two parts of the building (not outside walls).';
+        this.sound('error');
+      }
     } else if (drag?.kind === 'erase' && drag.changed) {
       this.history.record(drag.before);
       this.changed(true);
@@ -743,8 +764,9 @@ export class Editor {
       this.rev++;
       drag.layer = 'opening';
       drag.changed = true;
-    } else if (!op && this.design.walls.has(key) && drag.layer !== 'opening') {
+    } else if (!op && (this.design.walls.has(key) || this.design.transitions.has(key)) && drag.layer !== 'opening') {
       removeWalls(this.design, [key]);
+      removeTransitions(this.design, [key]);
       drag.layer = 'wall';
       drag.changed = true;
       this.rev++; // rooms may have merged
@@ -843,6 +865,7 @@ export class Editor {
     this.drawFurnitureLayer('floor');
     if (this.tool === 'furniture') this.drawClearances();
     this.drawWallFinishes();
+    this.drawTransitions();
     this.drawWalls();
     for (const op of d.openings) this.drawOpening(op, null);
     this.drawFurnitureLayer('object');
@@ -850,6 +873,7 @@ export class Editor {
     this.drawFurnitureLayer('ceiling');
     this.drawSimPeople();
     this.drawRoomOutlines();
+    if (this.tool === 'roof') this.drawRoofPlan();
     this.drawPreview();
     ctx.restore();
 
@@ -1003,6 +1027,52 @@ export class Editor {
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(cam.ox, cam.oy, d.lotW * s, d.lotH * s);
     ctx.setLineDash([]);
+  }
+
+  /** Transitions: a dashed line where two rooms meet with no wall. */
+  private drawTransitions(): void {
+    const { ctx, design: d } = this;
+    if (!d.transitions.size) return;
+    ctx.beginPath();
+    for (const k of d.transitions) {
+      const e = parseEdge(k);
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(e.o === 'h' ? e.x + 1 : e.x, e.o === 'h' ? e.y : e.y + 1);
+    }
+    ctx.strokeStyle = COLORS.transition;
+    ctx.lineWidth = 0.12;
+    ctx.setLineDash([0.3, 0.2]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /** Roof tool: tint the building with the roof color and draw ridges and hips. */
+  private drawRoofPlan(): void {
+    const { ctx, design: d } = this;
+    if (!d.footprint.size) return;
+    const mat = roofMaterial(d.roof.material);
+    cellsPath(ctx, d.footprint);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = mat?.color ?? '#4a4f57';
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const rects = roofPlan(d.footprint, d.roof);
+    ctx.strokeStyle = COLORS.ridge;
+    ctx.lineWidth = 2 / this.cam.scale;
+    ctx.beginPath();
+    for (const [ax, ay, bx, by] of roofLines(rects, d.roof)) {
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+    }
+    ctx.stroke();
+    if (d.roof.style === 'flat') {
+      ctx.setLineDash([0.4, 0.3]);
+      ctx.lineWidth = 1.5 / this.cam.scale;
+      ctx.beginPath();
+      for (const r of rects) ctx.rect(r.x0 + 0.4, r.y0 + 0.4, r.x1 - r.x0 - 0.8, r.y1 - r.y0 - 0.8);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   private drawWalls(): void {
@@ -1312,12 +1382,14 @@ export class Editor {
 
     if (drag?.kind === 'line') {
       ctx.strokeStyle = drag.add ? COLORS.ok : COLORS.bad;
-      ctx.lineWidth = 0.35;
+      ctx.lineWidth = drag.layer === 'transition' ? 0.18 : 0.35;
+      if (drag.layer === 'transition') ctx.setLineDash([0.3, 0.2]);
       ctx.lineCap = 'square';
       ctx.beginPath();
       ctx.moveTo(drag.ax, drag.ay);
       ctx.lineTo(drag.bx, drag.by);
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.lineCap = 'butt';
       return;
     }
@@ -1335,7 +1407,7 @@ export class Editor {
       return;
     }
 
-    if (this.tool === 'wall') {
+    if (this.tool === 'wall' || this.tool === 'transition') {
       ctx.fillStyle = this.shiftHeld || this.removeMode ? COLORS.bad : COLORS.ok;
       ctx.beginPath();
       ctx.arc(Math.round(pointer.wx), Math.round(pointer.wy), 5 / this.cam.scale, 0, Math.PI * 2);
@@ -1352,7 +1424,7 @@ export class Editor {
       if (!e) return;
       const key = edgeKey(e.o, e.x, e.y);
       const op = openingOnEdge(this.design, key);
-      if (!op && !this.design.walls.has(key)) return;
+      if (!op && !this.design.walls.has(key) && !this.design.transitions.has(key)) return;
       const edges = op ? openingEdges(op) : [key];
       ctx.fillStyle = COLORS.bad;
       for (const k of edges) {

@@ -56,7 +56,9 @@ export interface CatalogItem {
 export type Requirement =
   | { kind: 'room'; roomType: string; count: number; minAreaM2?: number }
   | { kind: 'item'; item: string; count: number }
-  | { kind: 'footprint'; minM2?: number; maxM2?: number };
+  | { kind: 'footprint'; minM2?: number; maxM2?: number }
+  | { kind: 'open'; a: string; b: string }
+  | { kind: 'roof'; styles: string[] };
 
 export interface ScoreWeights {
   flow: number;
@@ -101,14 +103,17 @@ export const catalogItem = (id: string | undefined) => (id ? itemById.get(id) : 
 
 export const FLOOR_MATERIALS: readonly Material[] = materials.floors;
 export const WALL_FINISHES: readonly Material[] = materials.walls;
+export const ROOF_MATERIALS: readonly Material[] = materials.roofs;
 export const ROOM_TYPES: readonly RoomType[] = roomTypes as RoomType[];
 export const COSTS = costs;
 
 const byId = <T extends { id: string }>(list: readonly T[]) => new Map(list.map((x) => [x.id, x]));
 const floorById = byId(FLOOR_MATERIALS);
 const wallById = byId(WALL_FINISHES);
+const roofById = byId(ROOF_MATERIALS);
 const roomById = byId(ROOM_TYPES);
 
 export const floorMaterial = (id: string | undefined) => (id ? floorById.get(id) : undefined);
 export const wallFinish = (id: string | undefined) => (id ? wallById.get(id) : undefined);
+export const roofMaterial = (id: string | undefined) => (id ? roofById.get(id) : undefined);
 export const roomType = (id: string | undefined) => (id ? roomById.get(id) : undefined);

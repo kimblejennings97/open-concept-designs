@@ -1,7 +1,8 @@
 {
   "wallHeightM": 2.7,
   "structure": {
-    "foundationAndRoofPerM2": 1100,
+    "foundationPerM2": 700,
+    "transitionPerM": 60,
     "exteriorWallPerM": 650,
     "interiorWallPerM": 250
   },

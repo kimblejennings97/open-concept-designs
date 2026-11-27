@@ -10,6 +10,7 @@ import {
 } from './grid';
 import { normalizeRoomData } from './rooms';
 import { type Furniture, normalizeFurniture } from './furniture';
+import { DEFAULT_ROOF, type Roof, normalizeRoof } from './roof';
 
 // ---------------------------------------------------------------------------
 // Openings (doors & windows)
@@ -59,6 +60,12 @@ export interface Design {
   footprint: Set<string>;
   /** Edge keys that have a wall. */
   walls: Set<string>;
+  /**
+   * Interior edges marked as a transition: an open boundary between two rooms (e.g. an open
+   * kitchen and living room). Rooms split there, but people walk straight through.
+   */
+  transitions: Set<string>;
+  roof: Roof;
   openings: Opening[];
   /** Floor material id per cell. */
   floors: Map<string, string>;
@@ -84,6 +91,8 @@ export interface DesignFile {
   lot: { w: number; h: number };
   footprint: string[];
   walls: string[];
+  transitions?: string[];
+  roof?: Roof;
   openings: Opening[];
   floors?: Record<string, string>;
   wallFinishes?: Record<string, string>;
@@ -106,6 +115,8 @@ export function createDesign(name = 'Untitled design', lotW = 40, lotH = 30): De
     lotH,
     footprint: new Set(),
     walls: new Set(),
+    transitions: new Set(),
+    roof: { ...DEFAULT_ROOF },
     openings: [],
     floors: new Map(),
     wallFinishes: new Map(),
@@ -131,6 +142,8 @@ export function serialize(d: Design): DesignFile {
     lot: { w: d.lotW, h: d.lotH },
     footprint: [...d.footprint].sort(),
     walls: [...d.walls].sort(),
+    transitions: [...d.transitions].sort(),
+    roof: { ...d.roof },
     openings: d.openings.map((o) => ({ ...o })),
     floors: sortedRecord(d.floors),
     wallFinishes: sortedRecord(d.wallFinishes),
@@ -155,6 +168,8 @@ export function deserialize(raw: unknown): Design {
     lotH: h!,
     footprint: new Set(Array.isArray(f.footprint) ? f.footprint : []),
     walls: new Set(Array.isArray(f.walls) ? f.walls : []),
+    transitions: new Set(Array.isArray(f.transitions) ? f.transitions : []),
+    roof: normalizeRoof(f.roof),
     openings: Array.isArray(f.openings) ? f.openings.map((o) => ({ ...o })) : [],
     floors: stringMap(f.floors),
     wallFinishes: stringMap(f.wallFinishes),
@@ -226,6 +241,7 @@ export interface DesignStats {
   footprintM2: number;
   exteriorWallM: number;
   interiorWallM: number;
+  transitionM: number;
   doors: number;
   windows: number;
 }
@@ -241,6 +257,7 @@ export function stats(d: Design): DesignStats {
     footprintM2: d.footprint.size * CELL_M * CELL_M,
     exteriorWallM: ext * CELL_M,
     interiorWallM: int * CELL_M,
+    transitionM: d.transitions.size * CELL_M,
     doors: d.openings.filter((o) => OPENING_SPECS[o.kind].isDoor).length,
     windows: d.openings.filter((o) => !OPENING_SPECS[o.kind].isDoor).length,
   };
@@ -254,6 +271,10 @@ export function stats(d: Design): DesignStats {
 export function normalize(d: Design): void {
   for (const k of [...d.walls]) {
     if (!edgeInLot(d, parseEdge(k)) || wallKind(d, k) === 'none') d.walls.delete(k);
+  }
+  // Transitions only make sense between two footprint cells with no wall.
+  for (const k of [...d.transitions]) {
+    if (!edgeInLot(d, parseEdge(k)) || wallKind(d, k) !== 'interior' || d.walls.has(k)) d.transitions.delete(k);
   }
   for (const k of [...d.footprint]) {
     const [x, y] = parseCell(k);
@@ -299,9 +320,39 @@ export function addWalls(d: Design, keys: string[]): boolean {
   for (const k of keys) {
     if (d.walls.has(k) || !edgeInLot(d, parseEdge(k)) || wallKind(d, k) === 'none') continue;
     d.walls.add(k);
+    d.transitions.delete(k);
     changed = true;
   }
   return changed;
+}
+
+/** Mark interior edges as transitions, replacing any wall (and doors on it) there. */
+export function addTransitions(d: Design, keys: string[]): boolean {
+  let changed = false;
+  let removedWall = false;
+  for (const k of keys) {
+    if (d.transitions.has(k) || !edgeInLot(d, parseEdge(k)) || wallKind(d, k) !== 'interior') continue;
+    d.transitions.add(k);
+    removedWall = d.walls.delete(k) || removedWall;
+    changed = true;
+  }
+  if (removedWall) normalize(d);
+  else if (changed) normalizeRoomData(d);
+  return changed;
+}
+
+export function removeTransitions(d: Design, keys: string[]): boolean {
+  let changed = false;
+  for (const k of keys) changed = d.transitions.delete(k) || changed;
+  if (changed) normalizeRoomData(d);
+  return changed;
+}
+
+export function setRoof(d: Design, patch: Partial<Roof>): boolean {
+  const next = normalizeRoof({ ...d.roof, ...patch });
+  if (JSON.stringify(next) === JSON.stringify(d.roof)) return false;
+  d.roof = next;
+  return true;
 }
 
 /** Remove walls (and any doors/windows on them). */

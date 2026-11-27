@@ -27,6 +27,7 @@ export class Viewer3D {
   private frame = 0;
   private readonly resizeObserver: ResizeObserver;
   cutaway = true;
+  showRoof = false;
 
   constructor(
     private readonly container: HTMLElement,
@@ -94,6 +95,11 @@ export class Viewer3D {
     this.applyCutaway();
   }
 
+  setRoof(on: boolean): void {
+    this.showRoof = on;
+    this.applyCutaway();
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
@@ -106,7 +112,9 @@ export class Viewer3D {
 
   private applyCutaway(): void {
     // Walls down to waist height so you can see inside (like a dollhouse).
-    if (this.built) this.built.walls.scale.y = this.cutaway ? 0.38 : 1;
+    if (!this.built) return;
+    this.built.walls.scale.y = this.cutaway ? 0.38 : 1;
+    this.built.roof.visible = this.showRoof && !this.cutaway;
   }
 
   private clearBuilding(): void {

@@ -1,5 +1,5 @@
 {
-  "_comment": "Client briefs. Lot sizes in meters. Weights say how much each score counts (they sum to 1). Requirements: room (count of a room type, optional min area), item (count of a catalog item), footprint (area range in m²).",
+  "_comment": "Client briefs. Lot sizes in meters. Weights say how much each score counts (they sum to 1). Requirements: room (count of a room type, optional min area), item (count of a catalog item), footprint (area range in m²), open (two room types joined by a transition), roof (one of the listed roof styles).",
   "briefs": [
     {
       "id": "starter-home",
@@ -8,7 +8,7 @@
       "client": "Maya & Theo",
       "clientRole": "Young couple",
       "title": "Starter home",
-      "summary": "Our first place! Two bedrooms so there's room for guests (or a nursery someday), a cozy living room, and a kitchen we can actually cook in. We're on a tight budget.",
+      "summary": "Our first place! Two bedrooms so there's room for guests (or a nursery someday), a cozy living room, and a kitchen we can actually cook in, open to the living room so we can talk while we cook. We're on a tight budget.",
       "lot": { "w": 20, "h": 15 },
       "budget": 160000,
       "fee": 12000,
@@ -19,6 +19,7 @@
         { "kind": "room", "roomType": "bathroom", "count": 1 },
         { "kind": "room", "roomType": "kitchen", "count": 1 },
         { "kind": "room", "roomType": "living", "count": 1, "minAreaM2": 14 },
+        { "kind": "open", "a": "kitchen", "b": "living" },
         { "kind": "item", "item": "bed-double", "count": 1 },
         { "kind": "item", "item": "toilet", "count": 1 },
         { "kind": "item", "item": "fridge", "count": 1 },
@@ -57,7 +58,7 @@
       "client": "Ruth Okafor",
       "clientRole": "Retired teacher",
       "title": "Garden cottage",
-      "summary": "Just me and a great many books. One good bedroom, a bright living room for reading, and a kitchen. Warm wood, nothing flashy.",
+      "summary": "Just me and a great many books. One good bedroom, a bright living room for reading, and a kitchen. Warm wood, nothing flashy, and a proper peaked roof like the cottage I grew up in.",
       "lot": { "w": 16, "h": 12 },
       "budget": 120000,
       "fee": 9000,
@@ -68,6 +69,7 @@
         { "kind": "room", "roomType": "bathroom", "count": 1 },
         { "kind": "room", "roomType": "kitchen", "count": 1 },
         { "kind": "room", "roomType": "living", "count": 1, "minAreaM2": 12 },
+        { "kind": "roof", "styles": ["gable", "hip"] },
         { "kind": "item", "item": "bookshelf", "count": 2 },
         { "kind": "item", "item": "armchair", "count": 1 },
         { "kind": "footprint", "minM2": 45, "maxM2": 80 }

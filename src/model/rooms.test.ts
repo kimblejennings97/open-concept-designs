@@ -100,9 +100,13 @@ describe('computeCost', () => {
     const { byCell } = findRooms(d);
     setRoomType(d, byCell.get('0,0')!, 'bathroom');
     setRoomFloor(d, byCell.get('0,0')!, 'tile');
+    d.roof = { style: 'flat', pitch: 25, material: 'asphalt', turned: false };
     const c = computeCost(d, findRooms(d).rooms);
-    // 8 m² footprint × $1100; 12 m exterior × $650; 2 m interior × $250
-    expect(c.structure).toBe(8 * 1100 + 12 * 650 + 2 * 250);
+    // 8 m² foundation × $700 + flat asphalt roof × $350; 12 m exterior × $650; 2 m interior × $250
+    expect(c.structure).toBe(8 * 700 + 8 * 350 + 12 * 650 + 2 * 250);
+    // A pitched roof has more surface, so it costs more.
+    d.roof = { ...d.roof, style: 'gable', pitch: 45 };
+    expect(computeCost(d, findRooms(d).rooms).structure).toBe(8 * 700 + Math.round(8 * 350 * Math.SQRT2) + 12 * 650 + 2 * 250);
     // One plumbed room + HVAC base + 8 m² × $35
     expect(c.systems).toBe(6000 + 5000 + 8 * 35);
     // 4 m² tile × $70

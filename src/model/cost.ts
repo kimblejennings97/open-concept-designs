@@ -1,4 +1,5 @@
-import { COSTS, catalogItem, floorMaterial, roomType, wallFinish } from '../data/catalog';
+import { COSTS, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
+import { ROOF_STYLES, roofAreaFactor } from './roof';
 import { type Design, openingEdges, stats, wallKind } from './design';
 import { CELL_M } from './grid';
 import type { Room } from './rooms';
@@ -29,9 +30,16 @@ export function computeCost(d: Design, rooms: Room[]): CostSummary {
   };
 
   // Structure
-  add('structure', 'Foundation & roof', s.footprintM2 * COSTS.structure.foundationAndRoofPerM2);
+  add('structure', 'Foundation', s.footprintM2 * COSTS.structure.foundationPerM2);
+  const roofMat = roofMaterial(d.roof.material);
+  add(
+    'structure',
+    `Roof (${ROOF_STYLES[d.roof.style].label.toLowerCase()}, ${(roofMat?.name ?? 'basic').toLowerCase()})`,
+    s.footprintM2 * roofAreaFactor(d.roof) * (roofMat?.costPerM2 ?? 350),
+  );
   add('structure', 'Exterior walls', s.exteriorWallM * COSTS.structure.exteriorWallPerM);
   add('structure', 'Interior walls', s.interiorWallM * COSTS.structure.interiorWallPerM);
+  add('structure', 'Transitions', s.transitionM * COSTS.structure.transitionPerM);
   let doors = 0;
   let windows = 0;
   for (const op of d.openings) {

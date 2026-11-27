@@ -1,7 +1,8 @@
 /**
  * Room detection. A room is a connected group of footprint cells you can reach
- * without crossing a wall (doors and windows count as wall for this). A room is
- * "enclosed" when every edge between it and the outside has a wall.
+ * without crossing a wall or a transition (doors and windows count as wall for this).
+ * A room is "enclosed" when every edge between it and the outside has a wall.
+ * Rooms joined by transitions form an "open plan" group: separate rooms, one space.
  *
  * Room data is stored so it survives edits:
  *   - floor material per cell (splitting a room keeps both halves' floors),
@@ -24,6 +25,8 @@ export interface Room {
   wallSides: string[];
   /** Every edge on the room's outline (walls and open edges), for drawing a selection outline. */
   boundary: string[];
+  /** Transition edges on the room's outline (open to a neighboring room). */
+  transitions: string[];
   /** Room type id, if assigned. */
   type?: string;
 }
@@ -61,6 +64,7 @@ export function findRooms(d: Design): RoomMap {
     const cells: string[] = [];
     const wallSides: string[] = [];
     const boundary: string[] = [];
+    const transitions: string[] = [];
     let enclosed = true;
     const queue = [start];
     while (queue.length) {
@@ -71,6 +75,9 @@ export function findRooms(d: Design): RoomMap {
         const nk = cellKey(nx, ny);
         if (d.walls.has(edge)) {
           wallSides.push(sideKey(edge, side));
+          boundary.push(edge);
+        } else if (d.transitions.has(edge) && d.footprint.has(nk)) {
+          transitions.push(edge);
           boundary.push(edge);
         } else if (!d.footprint.has(nk)) {
           enclosed = false;
@@ -111,12 +118,50 @@ export function findRooms(d: Design): RoomMap {
       labelCell,
       wallSides,
       boundary,
+      transitions,
       type: anchor ? d.roomTypes.get(anchor) : undefined,
     };
     rooms.push(room);
     for (const k of cells) byCell.set(k, room);
   }
   return { rooms, byCell };
+}
+
+/** Rooms joined to each other by transitions, as groups (rooms with none are a group of one). */
+export function openGroups(map: RoomMap): Room[][] {
+  const parent = new Map<Room, Room>(map.rooms.map((r) => [r, r]));
+  const find = (r: Room): Room => {
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    return r;
+  };
+  for (const room of map.rooms) {
+    for (const edge of room.transitions) {
+      for (const [x, y] of edgeSides(parseEdge(edge))) {
+        const other = map.byCell.get(cellKey(x, y));
+        if (other && other !== room) parent.set(find(other), find(room));
+      }
+    }
+  }
+  const groups = new Map<Room, Room[]>();
+  for (const r of map.rooms) {
+    const root = find(r);
+    const g = groups.get(root);
+    if (g) g.push(r);
+    else groups.set(root, [r]);
+  }
+  return [...groups.values()];
+}
+
+/** Rooms directly across a transition from this one. */
+export function openNeighbors(map: RoomMap, room: Room): Room[] {
+  const out = new Set<Room>();
+  for (const edge of room.transitions) {
+    for (const [x, y] of edgeSides(parseEdge(edge))) {
+      const other = map.byCell.get(cellKey(x, y));
+      if (other && other !== room) out.add(other);
+    }
+  }
+  return [...out];
 }
 
 /** Drop room data that no longer has anything under it. Called from normalize(). */

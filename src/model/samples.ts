@@ -2,7 +2,18 @@
  * Ready-made sample designs: a starting point on a phone, and fixtures for tests.
  * Built with the same functions the editor uses, so they always follow the rules.
  */
-import { type Design, type Opening, type OpeningKind, addOpening, addWalls, createDesign, encloseFootprint, newId, paintFootprint } from './design';
+import {
+  type Design,
+  type Opening,
+  type OpeningKind,
+  addOpening,
+  addTransitions,
+  addWalls,
+  createDesign,
+  encloseFootprint,
+  newId,
+  paintFootprint,
+} from './design';
 import { type Rotation, addFurniture } from './furniture';
 import { cellKey, lineEdges } from './grid';
 import { findRooms, setRoomFloor, setRoomType, setRoomWalls } from './rooms';
@@ -31,7 +42,7 @@ function place(d: Design, item: string, x: number, y: number, rot: Rotation = 0)
   addFurniture(d, { id: newId(), item, x, y, rot });
 }
 
-/** 12 m × 8 m: two bedrooms, a bathroom, a kitchen and an L-shaped living room. */
+/** 12 m × 8 m: two bedrooms, a bathroom, and a kitchen open to an L-shaped living room. */
 export function sampleHouse(): Design {
   const d = createDesign('Sample house', 40, 30);
   paintFootprint(d, 4, 4, 27, 19, true);
@@ -40,13 +51,12 @@ export function sampleHouse(): Design {
   addWalls(d, lineEdges(4, 12, 14, 12)); // bedroom 1 / bottom row
   addWalls(d, lineEdges(9, 12, 9, 20)); // bathroom | bedroom 2
   addWalls(d, lineEdges(20, 4, 20, 12)); // living | kitchen
-  addWalls(d, lineEdges(20, 12, 28, 12)); // kitchen / living
+  addTransitions(d, lineEdges(20, 12, 28, 12)); // open kitchen / living
 
   opening(d, 'door', 'h', 22, 20, 2, true); // front door, swings in
   opening(d, 'door', 'v', 14, 8, 2, true); // bedroom 1
   opening(d, 'door', 'v', 14, 16, 2, true); // bedroom 2
   opening(d, 'door', 'h', 6, 12, 2); // bathroom (from bedroom 1)
-  opening(d, 'door', 'h', 23, 12, 2, true); // kitchen
   opening(d, 'window', 'h', 7, 4, 3);
   opening(d, 'window', 'h', 10, 20, 3);
   opening(d, 'window', 'v', 4, 14, 2);
@@ -82,6 +92,7 @@ export function sampleHouse(): Design {
 export function sampleStore(): Design {
   const d = createDesign('Sample store', 40, 30);
   paintFootprint(d, 5, 5, 32, 22, true);
+  d.roof = { style: 'flat', pitch: 25, material: 'membrane', turned: false };
   encloseFootprint(d);
   addWalls(d, lineEdges(13, 5, 13, 11)); // stockroom side
   addWalls(d, lineEdges(5, 11, 13, 11)); // stockroom front

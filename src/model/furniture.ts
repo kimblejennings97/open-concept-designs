@@ -12,7 +12,7 @@
 import { type CatalogItem, catalogItem, roomType } from '../data/catalog';
 import type { Design } from './design';
 import { cellKey, edgeKey } from './grid';
-import type { RoomMap } from './rooms';
+import { type Room, type RoomMap, openNeighbors } from './rooms';
 
 export type Rotation = 0 | 1 | 2 | 3;
 
@@ -134,7 +134,10 @@ export function checkFurniture(
     return { errors, warnings };
   }
   const room = rooms.byCell.get(cells[0]);
-  if (cells.some((k) => rooms.byCell.get(k) !== room) || innerEdges(item, f).some((k) => d.walls.has(k))) {
+  // A piece may straddle a transition (a rug across an open kitchen and living room), not a wall.
+  const space = new Set<Room | undefined>([room, ...(room ? openNeighbors(rooms, room) : [])]);
+  const touched = new Set(cells.map((k) => rooms.byCell.get(k)));
+  if ([...touched].some((r) => !space.has(r)) || innerEdges(item, f).some((k) => d.walls.has(k))) {
     errors.push('Crosses a wall');
   }
 
@@ -157,11 +160,12 @@ export function checkFurniture(
 
   if (item.layer === 'object') {
     const clear = clearanceCells(item, f);
-    if (clear.some((k) => rooms.byCell.get(k) !== room || blocking.has(k))) warnings.push('Clearance is blocked');
+    if (clear.some((k) => !space.has(rooms.byCell.get(k)) || !rooms.byCell.has(k) || blocking.has(k))) warnings.push('Clearance is blocked');
     if (cells.some((k) => swing.has(k))) warnings.push("In a door's swing");
   }
 
-  if (room?.type && item.roomTypes.length && !item.roomTypes.includes(room.type)) {
+  const types = [...touched].map((r) => r?.type).filter((t): t is string => !!t);
+  if (room?.type && item.roomTypes.length && !types.some((t) => item.roomTypes.includes(t))) {
     warnings.push(`Unusual in a ${roomType(room.type)?.name.toLowerCase() ?? 'room'}`);
   }
   return { errors, warnings };

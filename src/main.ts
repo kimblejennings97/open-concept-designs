@@ -1,6 +1,7 @@
 import './style.css';
 import { type DoorKind, Editor, TOOL_HINTS, type ToolId } from './editor/editor';
-import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, newId, serialize, stats } from './model/design';
+import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, newId, serialize, setRoof, stats } from './model/design';
+import { ROOF_PITCHES, ROOF_STYLES, type RoofStyle, SHED_MAX_PITCH, roofPlan, roofRise } from './model/roof';
 import { CELL_M, fmtMeters } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
@@ -21,6 +22,8 @@ import {
   CATALOG,
   FLOOR_MATERIALS,
   type Material,
+  COSTS,
+  ROOF_MATERIALS,
   ROOM_TYPES,
   WALL_FINISHES,
   catalogItem,
@@ -37,10 +40,12 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const TOOLS: Array<{ id: ToolId; label: string; key: string }> = [
   { id: 'footprint', label: 'Footprint', key: 'F' },
   { id: 'wall', label: 'Wall', key: 'W' },
+  { id: 'transition', label: 'Transition', key: 'T' },
   { id: 'door', label: 'Door', key: 'D' },
   { id: 'window', label: 'Window', key: 'N' },
   { id: 'room', label: 'Room', key: 'O' },
   { id: 'furniture', label: 'Furniture', key: 'C' },
+  { id: 'roof', label: 'Roof', key: 'P' },
   { id: 'erase', label: 'Erase', key: 'E' },
 ];
 
@@ -63,6 +68,7 @@ const el = {
   view3dStatus: $('view3d-status'),
   btn3dPlay: $<HTMLButtonElement>('btn-3d-play'),
   btn3dWalls: $<HTMLButtonElement>('btn-3d-walls'),
+  btn3dRoof: $<HTMLButtonElement>('btn-3d-roof'),
   career: $('career'),
   hint: $('status-hint'),
   pos: $('status-pos'),
@@ -169,7 +175,81 @@ function renderOptions(): void {
     renderRoomPanel();
   } else if (editor.tool === 'furniture') {
     renderFurniturePanel();
+  } else if (editor.tool === 'transition') {
+    el.options.append(
+      h2('Transition'),
+      note('Splits two rooms without a wall, so each can have its own type and floor while people walk straight through. Rooms joined this way share daylight.'),
+    );
+  } else if (editor.tool === 'roof') {
+    renderRoofPanel();
   }
+}
+
+function segmented<T extends string | number>(items: Array<[T, string]>, current: T, pick: (v: T) => void): HTMLDivElement {
+  const seg = document.createElement('div');
+  seg.className = 'segmented';
+  for (const [value, label] of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(value === current));
+    b.onclick = () => pick(value);
+    seg.append(b);
+  }
+  return seg;
+}
+
+function renderRoofPanel(): void {
+  const roof = editor.design.roof;
+  const edit = (patch: Parameters<typeof setRoof>[1]) => editor.mutate((d) => setRoof(d, patch));
+  el.options.append(
+    h2('Roof'),
+    segmented(
+      (Object.keys(ROOF_STYLES) as RoofStyle[]).map((k): [RoofStyle, string] => [k, ROOF_STYLES[k].label]),
+      roof.style,
+      (v) => edit({ style: v }),
+    ),
+    note(ROOF_STYLES[roof.style].hint),
+  );
+  if (roof.style !== 'flat') {
+    const label = document.createElement('div');
+    label.className = 'swatch-title';
+    label.textContent = 'Pitch';
+    el.options.append(
+      label,
+      segmented(
+        ROOF_PITCHES.map((p): [number, string] => [p, `${p}°`]),
+        roof.pitch,
+        (v) => edit({ pitch: v }),
+      ),
+    );
+    if (roof.style === 'shed' && roof.pitch > SHED_MAX_PITCH) el.options.append(note(`Shed roofs are capped at ${SHED_MAX_PITCH}°.`));
+  }
+  if (roof.style === 'gable' || roof.style === 'shed') {
+    const turn = document.createElement('button');
+    turn.type = 'button';
+    turn.style.width = '100%';
+    turn.textContent = roof.style === 'gable' ? 'Turn ridge 90°' : 'Flip slope';
+    turn.setAttribute('aria-pressed', String(roof.turned));
+    turn.onclick = () => edit({ turned: !roof.turned });
+    el.options.append(turn);
+  }
+  el.options.append(swatches('Material', ROOF_MATERIALS, roof.material, (id) => id && edit({ material: id }), false));
+  const rects = roofPlan(editor.design.footprint, roof);
+  if (rects.length) {
+    const top = roofRise(rects, roof) + COSTS.wallHeightM;
+    el.options.append(note(`${rects.length} roof section${rects.length === 1 ? '' : 's'} · ${top.toFixed(1)} m to the top`));
+  }
+  const see = document.createElement('button');
+  see.type = 'button';
+  see.className = 'primary';
+  see.style.width = '100%';
+  see.textContent = 'See it in 3D';
+  see.onclick = () => {
+    setRoofView(true);
+    void open3D();
+  };
+  el.options.append(see);
 }
 
 function h2(text: string): HTMLHeadingElement {
@@ -247,6 +327,7 @@ function swatches(
   materials: readonly Material[],
   current: string | null | 'mixed',
   pick: (id: string | null) => void,
+  allowNone = true,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'swatch-group';
@@ -273,7 +354,7 @@ function swatches(
     b.onclick = () => pick(id);
     list.append(b);
   };
-  button(null, 'Unfinished', null, '');
+  if (allowNone) button(null, 'Unfinished', null, '');
   for (const m of materials) if (m.tier <= unlockedTier() || m.id === current) button(m.id, m.name, m.color, `${m.costPerM2}/m²`);
   wrap.append(label, list);
   return wrap;
@@ -417,6 +498,8 @@ function renderStats(): void {
     ['Rooms', String(rooms.filter((r) => r.enclosed).length)],
     ['Exterior walls', `${s.exteriorWallM.toFixed(1)} m`],
     ['Interior walls', `${s.interiorWallM.toFixed(1)} m`],
+    ['Transitions', `${s.transitionM.toFixed(1)} m`],
+    ['Roof', ROOF_STYLES[d.roof.style].label + (d.roof.style === 'flat' ? '' : ` · ${d.roof.pitch}°`)],
     ['Doors', String(s.doors)],
     ['Windows', String(s.windows)],
     ['Looks', `${scoreAesthetics(d, editor.getRooms(), getBrief(d.briefId)?.theme).score}/100`],
@@ -612,6 +695,7 @@ async function open3D(): Promise<void> {
       editor.sim ? { result: editor.sim.result, time: editor.simTime, kinds: editor.sim.kinds } : null,
     );
     viewer.setCutaway(el.btn3dWalls.getAttribute('aria-pressed') === 'true');
+    viewer.setRoof(el.btn3dRoof.getAttribute('aria-pressed') === 'true');
     viewer.show(editor.design);
     el.view3dStatus.textContent = '';
   } catch (err) {
@@ -642,11 +726,21 @@ el.btn3dPlay.onclick = () => {
   else editor.playSim();
   refresh3DBar();
 };
+/** Roof on means walls up (a roof on cut-down walls would float); walls down hides the roof. */
+function setRoofView(roofOn: boolean): void {
+  el.btn3dRoof.setAttribute('aria-pressed', String(roofOn));
+  if (roofOn) el.btn3dWalls.setAttribute('aria-pressed', 'false');
+  viewer?.setCutaway(el.btn3dWalls.getAttribute('aria-pressed') === 'true');
+  viewer?.setRoof(roofOn);
+}
 el.btn3dWalls.onclick = () => {
   const on = el.btn3dWalls.getAttribute('aria-pressed') !== 'true';
   el.btn3dWalls.setAttribute('aria-pressed', String(on));
+  if (on) el.btn3dRoof.setAttribute('aria-pressed', 'false');
   viewer?.setCutaway(on);
+  viewer?.setRoof(el.btn3dRoof.getAttribute('aria-pressed') === 'true');
 };
+el.btn3dRoof.onclick = () => setRoofView(el.btn3dRoof.getAttribute('aria-pressed') !== 'true');
 $('btn-3d-close').onclick = close3D;
 $('btn-3d').onclick = () => void open3D();
 
@@ -879,7 +973,8 @@ let lastOptionsKey = '';
 function refreshUi(designChanged = false): void {
   const roomKey = editor.tool === 'room' ? roomSignature(editor.selectedRoom()) : '';
   const furnKey = editor.tool === 'furniture' ? furnitureSignature() : '';
-  const optionsKey = `${editor.design.id}|${unlockedTier()}|${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}`;
+  const roofKey = editor.tool === 'roof' ? `${JSON.stringify(editor.design.roof)}:${editor.design.footprint.size}` : '';
+  const optionsKey = `${editor.design.id}|${unlockedTier()}|${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}|${roofKey}`;
   if (editor.tool !== lastTool) {
     lastTool = editor.tool;
     renderTools();
