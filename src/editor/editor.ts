@@ -10,6 +10,7 @@ import {
   openingProblem,
   paintFootprint,
   removeOpening,
+  updateOpening,
   removeTransitions,
   removeWalls,
   restore,
@@ -22,6 +23,7 @@ import { type Edge, cellKey, edgeKey, fmtMeters, lineEdges, nearestEdge, parseCe
 import { type Room, type RoomMap, findRooms, parseSideKey } from '../model/rooms';
 import { type CatalogItem, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
 import { roofLines, roofPlan } from '../model/roof';
+import { type DoorStyle, doorHex, isDoor } from '../model/doors';
 import {
   type Furniture,
   type FurnitureCheck,
@@ -48,7 +50,7 @@ export const TOOL_HINTS: Record<ToolId, string> = {
   wall: 'Drag between grid points to draw a wall. Right-drag (or Shift-drag) to remove walls.',
   transition:
     'Drag along a line between two rooms to mark an open boundary (no wall), like an open kitchen and living room. Right-drag (or Shift-drag) to remove.',
-  door: 'Click a wall to place a door. R flips the swing. Right-click a door to remove it.',
+  door: 'Click a wall to place a door. Click an existing door to change its style and color. R flips the swing. Right-click a door to remove it.',
   window: 'Click an exterior wall to place a window. [ and ] change the width. Right-click to remove.',
   room: 'Click a room to select it, then set its type, flooring and wall finish in the sidebar. Esc deselects.',
   furniture: 'Pick an item from the catalog, then click to place it. R rotates. Drag a placed item to move it; right-click or Delete removes it.',
@@ -72,6 +74,7 @@ const COLORS = {
   wallInt: '#a9c0e0',
   transition: 'rgba(255, 207, 112, 0.85)',
   ridge: 'rgba(255, 236, 200, 0.9)',
+  selectedDoor: '#7fe0ff',
   window: '#7fd4ff',
   door: '#ffcf70',
   ok: 'rgba(110, 230, 150, 0.95)',
@@ -106,6 +109,11 @@ export class Editor {
   doorKind: DoorKind = 'door';
   windowLen = OPENING_SPECS.window.defaultLen;
   doorFlip = false;
+  /** Look for new doors (null = the default for inside/outside). */
+  doorStyle: DoorStyle | null = null;
+  doorColor: string | null = null;
+  /** Door picked with the Door tool, to restyle it. */
+  selectedOpeningId: string | null = null;
   /** Catalog item the Furniture tool will place, if any. */
   armedItem: string | null = null;
   furnitureRot: Rotation = 0;
@@ -190,6 +198,7 @@ export class Editor {
     this.drag = null;
     this.selectedCell = null;
     this.selectedFurnitureId = null;
+    this.selectedOpeningId = null;
     this.sim = null; // results belong to the previous design
     this.simPlaying = false;
     this.rev++;
@@ -201,6 +210,7 @@ export class Editor {
   setTool(t: ToolId): void {
     this.cancelDrag();
     this.tool = t;
+    this.selectedOpeningId = null;
     this.message = '';
     this.updateCursor();
     this.changed(false);
@@ -218,8 +228,28 @@ export class Editor {
   }
 
   flipDoor(): void {
+    const sel = this.selectedOpening();
+    if (sel) {
+      this.mutate((d) => updateOpening(d, sel.id, { flip: !sel.flip }));
+      return;
+    }
     this.doorFlip = !this.doorFlip;
     this.changed(false);
+  }
+
+  selectedOpening(): Opening | null {
+    return this.design.openings.find((o) => o.id === this.selectedOpeningId) ?? null;
+  }
+
+  selectOpening(id: string | null): void {
+    this.selectedOpeningId = id;
+    this.changed(false);
+  }
+
+  /** Restyle the selected door as one undoable step. */
+  editSelectedOpening(patch: Parameters<typeof updateOpening>[2]): void {
+    const sel = this.selectedOpening();
+    if (sel) this.mutate((d) => updateOpening(d, sel.id, patch));
   }
 
   /** R key: flip a door's swing, or rotate the furniture ghost / selected piece. */
@@ -268,11 +298,15 @@ export class Editor {
   deleteSelectedFurniture(): void {
     const id = this.selectedFurnitureId;
     if (id) this.mutate((d) => removeFurniture(d, id));
+    const op = this.selectedOpeningId;
+    if (op && this.tool === 'door' && this.mutate((d) => removeOpening(d, op))) this.selectedOpeningId = null;
   }
 
   /** Esc: drop the armed item, then clear selections. */
   escape(): void {
-    if (this.armedItem) {
+    if (this.selectedOpeningId) {
+      this.selectOpening(null);
+    } else if (this.armedItem) {
       this.armItem(null);
     } else if (this.selectedFurnitureId) {
       this.selectedFurnitureId = null;
@@ -555,9 +589,17 @@ export class Editor {
           const op = this.openingUnder(wx, wy);
           if (op && this.mutate((d) => removeOpening(d, op.id))) this.sound('remove');
         } else {
+          const existing = this.openingUnder(wx, wy);
+          if (this.tool === 'door' && existing && isDoor(existing)) {
+            // Tapping a door picks it, so the sidebar can restyle it.
+            this.selectedOpeningId = existing.id === this.selectedOpeningId ? null : existing.id;
+            break;
+          }
           const op = this.openingPreview(wx, wy);
           if (op && openingProblem(this.design, op) === null) {
-            this.mutate((d) => addOpening(d, { ...op, id: newId() }));
+            const id = newId();
+            this.mutate((d) => addOpening(d, { ...op, id }));
+            if (this.tool === 'door') this.selectedOpeningId = id;
             this.sound('place');
           } else if (op) {
             this.sound('error');
@@ -800,6 +842,8 @@ export class Editor {
       y: e.o === 'h' ? e.y : start,
       len,
       flip: this.doorFlip,
+      ...(kind !== 'window' && this.doorStyle ? { style: this.doorStyle } : {}),
+      ...(kind !== 'window' && this.doorColor ? { color: this.doorColor } : {}),
     };
   }
 
@@ -809,6 +853,8 @@ export class Editor {
     if (!p || this.drag) return;
     const op = this.openingPreview(p.wx, p.wy);
     if (op) this.message = openingProblem(this.design, op) ?? '';
+    const under = this.tool === 'door' ? this.openingUnder(p.wx, p.wy) : undefined;
+    if (under && isDoor(under)) this.message = under.id === this.selectedOpeningId ? 'Selected: style it in the sidebar' : 'Click to select this door';
     const g = this.ghost(p.wx, p.wy);
     if (g) {
       const c = checkFurniture(this.design, g, this.getRooms());
@@ -867,7 +913,7 @@ export class Editor {
     this.drawWallFinishes();
     this.drawTransitions();
     this.drawWalls();
-    for (const op of d.openings) this.drawOpening(op, null);
+    for (const op of d.openings) this.drawOpening(op, op.id === this.selectedOpeningId && this.tool === 'door' ? COLORS.selectedDoor : null);
     this.drawFurnitureLayer('object');
     this.drawFurnitureLayer('wall');
     this.drawFurnitureLayer('ceiling');
@@ -1162,8 +1208,18 @@ export class Editor {
       ctx.beginPath();
       ctx.moveTo(leaf.hx, leaf.hy);
       ctx.lineTo(leaf.hx + nx * leaf.r, leaf.hy + ny * leaf.r);
-      ctx.lineWidth = lw * 2;
-      ctx.stroke();
+      if (!tint && op.id !== 'preview') {
+        // The leaf in the door's own color, edged so dark colors still show.
+        ctx.lineWidth = lw * 4.5;
+        ctx.stroke();
+        ctx.strokeStyle = doorHex(this.design, op);
+        ctx.lineWidth = lw * 2.5;
+        ctx.stroke();
+        ctx.strokeStyle = color;
+      } else {
+        ctx.lineWidth = lw * 2;
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.arc(leaf.hx, leaf.hy, leaf.r, Math.min(aClosed, aOpen), Math.max(aClosed, aOpen));
       ctx.lineWidth = lw;
@@ -1417,6 +1473,11 @@ export class Editor {
       ctx.lineWidth = lw;
       ctx.strokeRect(Math.floor(pointer.wx), Math.floor(pointer.wy), 1, 1);
     } else if (this.tool === 'door' || this.tool === 'window') {
+      const under = this.tool === 'door' ? this.openingUnder(pointer.wx, pointer.wy) : undefined;
+      if (under && isDoor(under)) {
+        this.drawOpening(under, COLORS.hover);
+        return;
+      }
       const op = this.openingPreview(pointer.wx, pointer.wy);
       if (op) this.drawOpening(op, openingProblem(this.design, op) ? COLORS.bad : COLORS.ok);
     } else if (this.tool === 'erase') {

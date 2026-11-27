@@ -1,8 +1,9 @@
 import './style.css';
 import { type DoorKind, Editor, TOOL_HINTS, type ToolId } from './editor/editor';
-import { type Design, OPENING_SPECS, createDesign, deserialize, encloseFootprint, newId, serialize, setRoof, stats } from './model/design';
+import { DOOR_COLORS, DOOR_STYLES, type DoorStyle, doorColorId, doorLabel, doorStyle } from './model/doors';
+import { type Design, type Opening, OPENING_SPECS, openingEdges, createDesign, deserialize, encloseFootprint, newId, serialize, setRoof, stats } from './model/design';
 import { ROOF_PITCHES, ROOF_STYLES, type RoofStyle, SHED_MAX_PITCH, roofPlan, roofRise } from './model/roof';
-import { CELL_M, fmtMeters } from './model/grid';
+import { CELL_M, edgeSides, fmtMeters, parseEdge } from './model/grid';
 import { type Room, roomFloor, roomWalls, setRoomFloor, setRoomType, setRoomWalls } from './model/rooms';
 import { computeCost, fmtMoney } from './model/cost';
 import { type SampleId, sampleDesign } from './model/samples';
@@ -69,6 +70,7 @@ const el = {
   btn3dPlay: $<HTMLButtonElement>('btn-3d-play'),
   btn3dWalls: $<HTMLButtonElement>('btn-3d-walls'),
   btn3dRoof: $<HTMLButtonElement>('btn-3d-roof'),
+  btn3dDoors: $<HTMLButtonElement>('btn-3d-doors'),
   career: $('career'),
   hint: $('status-hint'),
   pos: $('status-pos'),
@@ -132,9 +134,11 @@ function renderTools(): void {
 
 function renderOptions(): void {
   el.options.replaceChildren();
-  if (editor.tool === 'door') {
+  if (editor.tool === 'door' && editor.selectedOpening()) {
+    renderSelectedDoor(editor.selectedOpening()!);
+  } else if (editor.tool === 'door') {
     const h = document.createElement('h2');
-    h.textContent = 'Door';
+    h.textContent = 'New door';
     const seg = document.createElement('div');
     seg.className = 'segmented';
     for (const kind of ['door', 'double-door'] as DoorKind[]) {
@@ -154,6 +158,21 @@ function renderOptions(): void {
     flip.style.width = '100%';
     flip.onclick = () => editor.flipDoor();
     el.options.append(h, seg, flip);
+    el.options.append(
+      ...doorLookControls(
+        editor.doorStyle,
+        editor.doorColor,
+        (style) => {
+          editor.doorStyle = style;
+          refreshUi();
+        },
+        (color) => {
+          editor.doorColor = color;
+          refreshUi();
+        },
+      ),
+      note('Click an existing door to restyle it.'),
+    );
   } else if (editor.tool === 'window') {
     const h = document.createElement('h2');
     h.textContent = 'Window';
@@ -183,6 +202,90 @@ function renderOptions(): void {
   } else if (editor.tool === 'roof') {
     renderRoofPanel();
   }
+}
+
+/** Style buttons and color chips for doors. `null` means "default for where it goes". */
+function doorLookControls(
+  style: DoorStyle | null,
+  color: string | null,
+  pickStyle: (s: DoorStyle | null) => void,
+  pickColor: (c: string | null) => void,
+): HTMLElement[] {
+  const styleTitle = document.createElement('div');
+  styleTitle.className = 'swatch-title';
+  styleTitle.textContent = 'Style';
+  const styles = segmented<DoorStyle | 'auto'>(
+    [['auto', 'Auto'], ...(Object.keys(DOOR_STYLES) as DoorStyle[]).map((k): [DoorStyle, string] => [k, DOOR_STYLES[k].label])],
+    style ?? 'auto',
+    (v) => pickStyle(v === 'auto' ? null : v),
+  );
+  styles.classList.add('wrap');
+  const colorTitle = document.createElement('div');
+  colorTitle.className = 'swatch-title';
+  colorTitle.textContent = 'Color';
+  const chips = document.createElement('div');
+  chips.className = 'color-chips';
+  const chip = (id: string | null, name: string, hex: string | null) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = name;
+    b.setAttribute('aria-label', name);
+    b.setAttribute('aria-pressed', String(color === id));
+    if (hex) b.style.background = hex;
+    else {
+      b.textContent = 'A';
+      b.classList.add('auto');
+    }
+    b.onclick = () => pickColor(id);
+    chips.append(b);
+  };
+  chip(null, 'Auto (front doors red, inside doors white)', null);
+  for (const c of DOOR_COLORS) chip(c.id, c.name, c.color);
+  return [styleTitle, styles, colorTitle, chips];
+}
+
+function renderSelectedDoor(op: Opening): void {
+  const d = editor.design;
+  const rooms = editor.getRooms();
+  const names = new Set<string>();
+  for (const k of openingEdges(op)) {
+    for (const [x, y] of edgeSides(parseEdge(k))) {
+      const t = roomType(rooms.byCell.get(`${x},${y}`)?.type);
+      if (t && t.id !== 'hallway' && t.id !== 'living') names.add(t.name);
+    }
+  }
+  const label = doorLabel(d, op, [...names]);
+  const style = doorStyle(d, op);
+  el.options.append(
+    h2(label),
+    note(`${DOOR_STYLES[style].label}, ${DOOR_COLORS.find((c) => c.id === doorColorId(d, op))?.name.toLowerCase() ?? ''}${op.style || op.color ? '' : ' (default)'}`),
+    ...doorLookControls(
+      op.style ?? null,
+      op.color ?? null,
+      (s) => editor.editSelectedOpening({ style: s ?? undefined }),
+      (c) => editor.editSelectedOpening({ color: c ?? undefined }),
+    ),
+  );
+  const row = document.createElement('div');
+  row.className = 'action-grid';
+  const mk = (text: string, fn: () => void) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = text;
+    b.onclick = fn;
+    return b;
+  };
+  row.append(
+    mk('Flip swing (R)', () => editor.flipDoor()),
+    mk('Remove', () => editor.deleteSelectedFurniture()),
+    mk('Use for new doors', () => {
+      editor.doorStyle = op.style ?? null;
+      editor.doorColor = op.color ?? null;
+      refreshUi();
+    }),
+    mk('Done', () => editor.selectOpening(null)),
+  );
+  el.options.append(row);
 }
 
 function segmented<T extends string | number>(items: Array<[T, string]>, current: T, pick: (v: T) => void): HTMLDivElement {
@@ -696,6 +799,10 @@ async function open3D(): Promise<void> {
     );
     viewer.setCutaway(el.btn3dWalls.getAttribute('aria-pressed') === 'true');
     viewer.setRoof(el.btn3dRoof.getAttribute('aria-pressed') === 'true');
+    viewer.onDoor = (open) => {
+      play(open ? 'place' : 'remove');
+      refreshDoorsButton();
+    };
     viewer.show(editor.design);
     el.view3dStatus.textContent = '';
   } catch (err) {
@@ -739,6 +846,13 @@ el.btn3dWalls.onclick = () => {
   if (on) el.btn3dRoof.setAttribute('aria-pressed', 'false');
   viewer?.setCutaway(on);
   viewer?.setRoof(el.btn3dRoof.getAttribute('aria-pressed') === 'true');
+};
+function refreshDoorsButton(): void {
+  el.btn3dDoors.textContent = viewer?.anyDoorOpen ? 'Close doors' : 'Open doors';
+}
+el.btn3dDoors.onclick = () => {
+  viewer?.setAllDoors(!viewer.anyDoorOpen);
+  refreshDoorsButton();
 };
 el.btn3dRoof.onclick = () => setRoofView(el.btn3dRoof.getAttribute('aria-pressed') !== 'true');
 $('btn-3d-close').onclick = close3D;
@@ -973,8 +1087,9 @@ let lastOptionsKey = '';
 function refreshUi(designChanged = false): void {
   const roomKey = editor.tool === 'room' ? roomSignature(editor.selectedRoom()) : '';
   const furnKey = editor.tool === 'furniture' ? furnitureSignature() : '';
+  const doorKey = editor.tool === 'door' ? `${JSON.stringify(editor.selectedOpening())}:${editor.doorStyle}:${editor.doorColor}` : '';
   const roofKey = editor.tool === 'roof' ? `${JSON.stringify(editor.design.roof)}:${editor.design.footprint.size}` : '';
-  const optionsKey = `${editor.design.id}|${unlockedTier()}|${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}|${roofKey}`;
+  const optionsKey = `${editor.design.id}|${unlockedTier()}|${editor.tool}|${editor.doorKind}|${editor.windowLen}|${roomKey}|${furnKey}|${roofKey}|${doorKey}`;
   if (editor.tool !== lastTool) {
     lastTool = editor.tool;
     renderTools();

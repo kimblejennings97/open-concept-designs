@@ -7,6 +7,7 @@ import { type Design, openingEdges, wallKind } from './design';
 import { CELL_M, cellKey, edgeSides, parseEdge } from './grid';
 import { type Room, type RoomMap, openGroups, openNeighbors, roomFloor, roomWalls } from './rooms';
 import { ROOF_STYLES } from './roof';
+import { DOOR_STYLES, doorStyle, isDoor } from './doors';
 
 export interface ScoreIssue {
   category: 'flow' | 'aesthetics' | 'budget' | 'brief';
@@ -113,6 +114,7 @@ export function scoreAesthetics(d: Design, rooms: RoomMap, wantedTheme?: string)
   const roofMat = roofMaterial(d.roof.material);
   if (roofMat) tagSets.push(roofMat.tags);
   tagSets.push(ROOF_STYLES[d.roof.style].tags);
+  for (const op of d.openings) if (isDoor(op)) tagSets.push(DOOR_STYLES[doorStyle(d, op)].tags);
   let theme = wantedTheme ?? null;
   if (!theme && tagSets.length) {
     const counts = new Map<string, number>();

@@ -113,6 +113,34 @@ describe('UI smoke test', () => {
     expect(document.getElementById('stats')!.textContent).toMatch(/Windows/);
   });
 
+  it('draws transitions, styles the roof, and restyles a door', async () => {
+    clickButton('Transition');
+    pointer('pointerdown', ...cell(16, 16));
+    pointer('pointermove', ...cell(18, 16));
+    pointer('pointerup', ...cell(18, 16));
+    await tick(10);
+    clickButton('Roof');
+    clickButton('Hip');
+    clickButton('45°');
+    clickButton('Clay tile');
+    await tick(10);
+    expect(document.getElementById('stats')!.textContent).toMatch(/Hip · 45°/);
+    expect(document.getElementById('cost')!.textContent).toMatch(/Roof \(hip, clay tile\)/);
+
+    // The sample house's front door spans x 22–24 on the y = 20 edge.
+    clickButton('Door');
+    const s = Math.min((800 - 96) / 40, (600 - 96) / 30);
+    const [fx, fy] = cell(22, 20);
+    pointer('pointerdown', fx + s / 2, fy - s / 2);
+    pointer('pointerup', fx + s / 2, fy - s / 2);
+    await tick(10);
+    expect(document.getElementById('options')!.textContent).toMatch(/Front door/);
+    clickButton('Glass');
+    await tick(10);
+    expect(document.getElementById('options')!.textContent).toMatch(/Glass, barn red/);
+    clickButton('Done');
+  });
+
   it('selects a room and changes its floor', async () => {
     clickButton('Room');
     pointer('pointerdown', ...cell(18, 17));

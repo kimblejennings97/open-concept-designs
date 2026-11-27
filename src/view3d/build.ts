@@ -10,6 +10,8 @@ import type { Furniture } from '../model/furniture';
 import { CELL_M, parseCell, parseEdge } from '../model/grid';
 import { parseSideKey } from '../model/rooms';
 import { roofGeometry } from './roof3d';
+import { box, merged } from './geom';
+import { doorLeaves, type DoorLeaf } from './doors3d';
 
 export const WALL_H = COSTS.wallHeightM;
 const DOOR_H = 2.1;
@@ -28,36 +30,9 @@ export interface BuiltScene {
   center: THREE.Vector3;
   /** Rough size of the building, for camera distance. */
   radius: number;
+  /** Door leaves on hinge pivots (inside the walls group), for opening on tap. */
+  doors: DoorLeaf[];
   dispose: () => void;
-}
-
-const color = new THREE.Color();
-
-/** A box from (x0,y0,z0) to (x1,y1,z1) with a vertex color, for merging. */
-function box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, hex: string): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(Math.max(0.001, x1 - x0), Math.max(0.001, y1 - y0), Math.max(0.001, z1 - z0));
-  g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-  color.set(hex);
-  const n = g.attributes.position.count;
-  const cols = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    cols[i * 3] = color.r;
-    cols[i * 3 + 1] = color.g;
-    cols[i * 3 + 2] = color.b;
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  return g;
-}
-
-function merged(parts: THREE.BufferGeometry[], material: THREE.Material, shadows = true): THREE.Mesh | null {
-  if (!parts.length) return null;
-  const g = mergeGeometries(parts, false);
-  for (const p of parts) p.dispose();
-  if (!g) return null;
-  const mesh = new THREE.Mesh(g, material);
-  mesh.castShadow = shadows;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +273,9 @@ export function buildScene(d: Design): BuiltScene {
       }
     }
   }
+  const doorSet = doorLeaves(d, { solid, glass, doorH: DOOR_H, extT: EXT_T, intT: INT_T });
+  walls.add(doorSet.group);
+  disposables.push(...doorSet.geometries);
   const wallMesh = merged(wallParts, solid);
   if (wallMesh) walls.add(wallMesh);
   if (glassParts.length) {
@@ -329,5 +307,5 @@ export function buildScene(d: Design): BuiltScene {
     ? new THREE.Vector3(((minX + maxX) / 2) * CELL_M, 0, ((minZ + maxZ) / 2) * CELL_M)
     : new THREE.Vector3(lotW / 2, 0, lotH / 2);
   const radius = hasBuilding ? Math.hypot(maxX - minX, maxZ - minZ) * CELL_M * 0.5 : Math.hypot(lotW, lotH) / 2;
-  return { root, walls, roof, center, radius: Math.max(3, radius), dispose: () => disposables.forEach((x) => x.dispose()) };
+  return { root, walls, roof, doors: doorSet.leaves, center, radius: Math.max(3, radius), dispose: () => disposables.forEach((x) => x.dispose()) };
 }

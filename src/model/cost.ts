@@ -1,5 +1,6 @@
 import { COSTS, catalogItem, floorMaterial, roofMaterial, roomType, wallFinish } from '../data/catalog';
 import { ROOF_STYLES, roofAreaFactor } from './roof';
+import { DOOR_STYLES, doorStyle } from './doors';
 import { type Design, openingEdges, stats, wallKind } from './design';
 import { CELL_M } from './grid';
 import type { Room } from './rooms';
@@ -48,6 +49,7 @@ export function computeCost(d: Design, rooms: Room[]): CostSummary {
     } else {
       const ext = wallKind(d, openingEdges(op)[0]) === 'exterior';
       doors += COSTS.openings[op.kind][ext ? 'exterior' : 'interior'];
+      doors += DOOR_STYLES[doorStyle(d, op)].extraCost * (op.kind === 'double-door' ? 2 : 1);
     }
   }
   add('structure', 'Doors', doors);

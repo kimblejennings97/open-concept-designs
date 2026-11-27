@@ -1,4 +1,4 @@
-/** Interactive 3D view: orbit camera, soft lighting, cutaway walls, and simulated people. */
+/** Interactive 3D view: orbit camera, soft lighting, cutaway walls, doors you can open, and simulated people. */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Design } from '../model/design';
@@ -28,6 +28,14 @@ export class Viewer3D {
   private readonly resizeObserver: ResizeObserver;
   cutaway = true;
   showRoof = false;
+  /** Called when a door is tapped open or shut. */
+  onDoor: (open: boolean) => void = () => {};
+  /** Door openness 0–1 by opening id, and where each is heading. Kept across rebuilds. */
+  private readonly doorOpen = new Map<string, number>();
+  private readonly doorTarget = new Map<string, number>();
+  private readonly raycaster = new THREE.Raycaster();
+  private down: { x: number; y: number } | null = null;
+  private lastTick = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -55,6 +63,24 @@ export class Viewer3D {
     this.controls.maxPolarAngle = Math.PI * 0.47;
     this.controls.minDistance = 3;
     this.controls.maxDistance = 120;
+
+    const el = this.renderer.domElement;
+    el.addEventListener('pointerdown', (e) => {
+      this.down = { x: e.clientX, y: e.clientY };
+    });
+    el.addEventListener('pointerup', (e) => {
+      const d = this.down;
+      this.down = null;
+      // A tap (not an orbit drag) on a door swings it.
+      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) {
+        const id = this.doorAt(e);
+        if (id) this.toggleDoor(id);
+      }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.buttons || e.pointerType === 'touch') return;
+      el.style.cursor = this.doorAt(e) ? 'pointer' : '';
+    });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -93,6 +119,46 @@ export class Viewer3D {
   setCutaway(on: boolean): void {
     this.cutaway = on;
     this.applyCutaway();
+  }
+
+  toggleDoor(id: string): void {
+    const open = (this.doorTarget.get(id) ?? 0) < 0.5;
+    this.doorTarget.set(id, open ? 1 : 0);
+    this.onDoor(open);
+  }
+
+  /** Open or shut every door at once. */
+  setAllDoors(open: boolean): void {
+    for (const leaf of this.built?.doors ?? []) this.doorTarget.set(leaf.id, open ? 1 : 0);
+  }
+
+  get anyDoorOpen(): boolean {
+    return [...this.doorTarget.values()].some((v) => v > 0.5);
+  }
+
+  /** The door under a pointer event, if the first thing hit is a door. */
+  private doorAt(e: PointerEvent): string | null {
+    if (!this.built?.doors.length) return null;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const targets: THREE.Object3D[] = [this.built.walls];
+    if (this.built.roof.visible) targets.push(this.built.roof);
+    const hit = this.raycaster.intersectObjects(targets, true)[0];
+    return (hit?.object.userData.doorId as string | undefined) ?? null;
+  }
+
+  private updateDoors(dt: number): void {
+    for (const leaf of this.built?.doors ?? []) {
+      const target = this.doorTarget.get(leaf.id) ?? 0;
+      let v = this.doorOpen.get(leaf.id) ?? 0;
+      if (v !== target) {
+        v = target > v ? Math.min(target, v + dt * 1.6) : Math.max(target, v - dt * 1.6);
+        this.doorOpen.set(leaf.id, v);
+      }
+      const eased = v * v * (3 - 2 * v);
+      leaf.pivot.rotation.y = leaf.closed + leaf.delta * eased;
+    }
   }
 
   setRoof(on: boolean): void {
@@ -208,7 +274,11 @@ export class Viewer3D {
 
   private loop = (): void => {
     this.frame = requestAnimationFrame(this.loop);
+    const now = performance.now();
+    const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
+    this.lastTick = now;
     this.controls.update();
+    this.updateDoors(dt);
     this.updatePeople();
     this.renderer.render(this.scene, this.camera);
   };

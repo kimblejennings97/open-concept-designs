@@ -17,13 +17,13 @@ Play: https://kimblejennings97.github.io/open-concept-designs/ · Design doc: ht
 3. Furnish it from the catalog (Furniture tool). Pieces need clearance in front, shouldn't block door swings, and some must back onto a wall.
 4. **Run simulation** to watch residents or shoppers use the building, with a heatmap of where they got stuck.
 5. **Submit to client** to get a report card: Flow, Looks, Budget and Brief scores, weighted by the brief, turned into 0 to 3 stars.
-6. **3D** shows the building in 3D with people replaying the simulation.
+6. **3D** shows the building in 3D with people replaying the simulation. Toggle the roof, and tap doors to open them.
 
 ## Controls
 
 | Action | Mouse / keyboard | Touch |
 | --- | --- | --- |
-| Tools: Footprint, Wall, Door, Window, Room, Furniture, Erase | `F` `W` `D` `N` `O` `C` `E` | Tool buttons |
+| Tools: Footprint, Wall, Transition, Door, Window, Room, Furniture, Roof, Erase | `F` `W` `T` `D` `N` `O` `C` `P` `E` | Tool buttons |
 | Remove with the current tool | Right-drag, or Shift-drag | **Remove** toggle |
 | Rotate furniture / flip a door | `R` | Rotate button / Flip swing |
 | Window width | `[` `]` | Width picker |
@@ -60,7 +60,7 @@ src/
   main.ts    Page wiring.
 ```
 
-Grid: one cell is 0.5 m. Walls sit on cell edges. A wall with building on one side is exterior, on both sides interior. Doors and windows span consecutive wall edges, and windows only go on exterior walls.
+Grid: one cell is 0.5 m. Walls sit on cell edges. A wall with building on one side is exterior, on both sides interior. Doors and windows span consecutive wall edges, and windows only go on exterior walls. A transition marks an interior edge as an open boundary: the rooms on each side are separate (own type and floor) but people walk straight through, as in an open kitchen and living room. Doors have a style and color; the Roof tool picks gable, hip, shed or flat.
 
 ## Deploy
 

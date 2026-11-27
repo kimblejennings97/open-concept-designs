@@ -11,6 +11,7 @@ import {
 import { normalizeRoomData } from './rooms';
 import { type Furniture, normalizeFurniture } from './furniture';
 import { DEFAULT_ROOF, type Roof, normalizeRoof } from './roof';
+import type { DoorStyle } from './doors';
 
 // ---------------------------------------------------------------------------
 // Openings (doors & windows)
@@ -44,6 +45,10 @@ export interface Opening {
   len: number;
   /** Doors: which side the leaf swings to. */
   flip: boolean;
+  /** Doors: look. Unset = the default for where it is (see doors.ts). */
+  style?: DoorStyle;
+  /** Doors: color id (see DOOR_COLORS). */
+  color?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +385,20 @@ export function addOpening(d: Design, op: Opening): boolean {
   if (openingProblem(d, op) !== null) return false;
   d.openings.push({ ...op });
   return true;
+}
+
+/** Change a door's swing, style or color. */
+export function updateOpening(d: Design, id: string, patch: Partial<Pick<Opening, 'flip' | 'style' | 'color'>>): boolean {
+  const op = d.openings.find((o) => o.id === id);
+  if (!op) return false;
+  let changed = false;
+  for (const [k, v] of Object.entries(patch) as Array<[keyof typeof patch, never]>) {
+    if (op[k] !== v) {
+      op[k] = v;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export function removeOpening(d: Design, id: string): boolean {
